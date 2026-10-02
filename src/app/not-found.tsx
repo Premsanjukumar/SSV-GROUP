@@ -27,7 +27,7 @@ export default function NotFound() {
               Page Not Found
             </h2>
             <p className="text-sm leading-relaxed" style={{ color: "rgba(255,248,220,0.5)" }}>
-              The page you are looking for might have been moved or does not exist. Let's get you back to the celebration.
+              The page you are looking for might have been moved or does not exist. Let&apos;s get you back to the celebration.
             </p>
           </div>
 
