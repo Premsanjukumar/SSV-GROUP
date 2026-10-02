@@ -1,0 +1,203 @@
+// SSV Dandiya Divas 2026 — Prisma Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String?
+  role         String    @default("admin")
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  ticketScans  TicketScan[]
+  auditLogs    AuditLog[]
+}
+
+model Event {
+  id            String      @id @default(cuid())
+  name          String
+  slug          String      @unique
+  description   String?
+  tagline       String?
+  venue         String
+  address       String?
+  city          String
+  state         String?
+  startDateTime DateTime
+  endDateTime   DateTime?
+  status        EventStatus @default(DRAFT)
+  posterUrl     String?
+  isPublished   Boolean     @default(false)
+  mapsUrl       String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  ticketTypes   TicketType[]
+  bookings      Booking[]
+}
+
+model TicketType {
+  id          String    @id @default(cuid())
+  eventId     String
+  name        String
+  description String?
+  price       Int
+  capacity    Int
+  maxPerOrder Int       @default(5)
+  isActive    Boolean   @default(true)
+  womenOnly   Boolean   @default(false)
+  salesStart  DateTime?
+  salesEnd    DateTime?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  event        Event         @relation(fields: [eventId], references: [id])
+  bookingItems BookingItem[]
+  @@index([eventId])
+}
+
+model Booking {
+  id                String        @id @default(cuid())
+  bookingRef        String        @unique
+  eventId           String
+  customerName      String
+  customerEmail     String
+  customerPhone     String
+  customerCity      String?
+  totalAmount       Int
+  platformFee       Int           @default(0)
+  grandTotal        Int
+  status            BookingStatus @default(PENDING)
+  paymentStatus     PaymentStatus @default(PENDING)
+  paymentMode       String        @default("demo")
+  razorpayOrderId   String?       @unique
+  razorpayPaymentId String?
+  razorpaySignature String?
+  notes             String?
+  ipAddress         String?
+  userAgent         String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  confirmedAt       DateTime?
+  event        Event         @relation(fields: [eventId], references: [id])
+  bookingItems BookingItem[]
+  payment      Payment?
+  tickets      Ticket[]
+  auditLogs    AuditLog[]
+}
+
+model BookingItem {
+  id            String     @id @default(cuid())
+  bookingId     String
+  ticketTypeId  String
+  quantity      Int
+  unitPrice     Int
+  subtotal      Int
+  attendeeNames Json?
+  createdAt     DateTime   @default(now())
+  booking    Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  ticketType TicketType @relation(fields: [ticketTypeId], references: [id])
+  @@index([bookingId])
+  @@index([ticketTypeId])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  bookingId         String        @unique
+  amount            Int
+  currency          String        @default("INR")
+  paymentMode       String
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  status            PaymentStatus @default(PENDING)
+  failureReason     String?
+  gatewayResponse   Json?
+  webhookVerified   Boolean       @default(false)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model Ticket {
+  id          String     @id @default(cuid())
+  bookingId   String
+  token       String     @unique
+  qrData      String
+  isValid     Boolean    @default(true)
+  checkedIn   Boolean    @default(false)
+  checkedInAt DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  booking Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  scans   TicketScan[]
+  @@index([bookingId])
+  @@index([token])
+}
+
+model TicketScan {
+  id         String     @id @default(cuid())
+  ticketId   String
+  adminId    String?
+  scanType   String     @default("qr")
+  result     String
+  scannedAt  DateTime   @default(now())
+  deviceInfo String?
+  ipAddress  String?
+  ticket Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  admin  AdminUser? @relation(fields: [adminId], references: [id])
+  @@index([ticketId])
+}
+
+model AuditLog {
+  id        String     @id @default(cuid())
+  adminId   String?
+  bookingId String?
+  action    String
+  details   Json?
+  ipAddress String?
+  createdAt DateTime   @default(now())
+  admin   AdminUser? @relation(fields: [adminId], references: [id])
+  booking Booking?   @relation(fields: [bookingId], references: [id])
+}
+
+model Settings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  type      String   @default("string")
+  group     String?
+  label     String?
+  updatedAt DateTime @updatedAt
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
