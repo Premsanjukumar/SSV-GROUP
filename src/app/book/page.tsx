@@ -27,6 +27,7 @@ interface BookingState {
     customerPhone: string;
     customerCity: string;
     femaleConfirmation: boolean;
+    termsAgreed: boolean;
   };
 }
 
@@ -54,6 +55,7 @@ function BookingPageInner() {
       customerPhone: "",
       customerCity: "",
       femaleConfirmation: false,
+      termsAgreed: false,
     },
   });
 
@@ -102,6 +104,8 @@ function BookingPageInner() {
     if (!/^[6-9]\d{9}$/.test(form.customerPhone)) return "Enter a valid 10-digit mobile number";
     if (ticketType?.isFemaleOnly && !form.femaleConfirmation)
       return "You must confirm eligibility for the Single Pass (Women Only)";
+    if (!form.termsAgreed)
+      return "Please confirm that you have read and agreed to the Terms & Conditions and Refund Policy";
     return null;
   }
 
@@ -397,7 +401,7 @@ function BookingPageInner() {
                         <label className="flex items-start gap-3 cursor-pointer">
                           <input
                             type="checkbox"
-                            className="mt-0.5 w-4 h-4 accent-red-700"
+                            className="mt-0.5 w-4 h-4 accent-red-700 cursor-pointer"
                             checked={state.form.femaleConfirmation}
                             onChange={(e) => updateForm("femaleConfirmation", e.target.checked)}
                             id="femaleConfirmation"
@@ -409,6 +413,60 @@ function BookingPageInner() {
                         </label>
                       </div>
                     )}
+
+                    {/* Terms and Conditions Checkbox */}
+                    <div
+                      className="p-4 rounded-xl"
+                      style={{
+                        background: state.form.termsAgreed ? "rgba(212,160,23,0.08)" : "rgba(26,5,5,0.6)",
+                        border: state.form.termsAgreed ? "1px solid rgba(212,160,23,0.4)" : "1px solid rgba(212,160,23,0.15)",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      <label className="flex items-start gap-3 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          className="mt-1 w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                          checked={state.form.termsAgreed}
+                          onChange={(e) => updateForm("termsAgreed", e.target.checked)}
+                          id="termsAgreed"
+                          required
+                        />
+                        <span className="text-sm leading-relaxed" style={{ color: "rgba(255,248,220,0.85)" }}>
+                          Yes, I have read and agree to the{" "}
+                          <a
+                            href="/terms"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline font-medium text-gold-400 hover:text-gold-300"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Terms &amp; Conditions
+                          </a>
+                          ,{" "}
+                          <a
+                            href="/refund-policy"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline font-medium text-gold-400 hover:text-gold-300"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Refund Policy
+                          </a>
+                          , and{" "}
+                          <a
+                            href="/disclaimer"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline font-medium text-gold-400 hover:text-gold-300"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Disclaimer
+                          </a>
+                          . <span className="text-gold-400 font-bold">*</span>
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}

@@ -60,6 +60,7 @@ function CheckoutInner() {
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(true);
 
   useEffect(() => {
     if (!bookingId) {
@@ -248,7 +249,7 @@ function CheckoutInner() {
                 ))}
               </div>
 
-              <div className="p-4 rounded-xl mb-8"
+              <div className="p-4 rounded-xl mb-6"
                 style={{ background: "rgba(26,5,5,0.8)", border: "1px solid rgba(212,160,23,0.2)" }}>
                 <div className="flex justify-between items-center">
                   <span className="font-bold" style={{ color: "#FFF8DC" }}>Total Amount</span>
@@ -258,11 +259,61 @@ function CheckoutInner() {
                 </div>
               </div>
 
+              {/* Terms and Conditions Checkbox */}
+              <div
+                className="mb-6 p-4 rounded-xl"
+                style={{
+                  background: termsAccepted ? "rgba(212,160,23,0.06)" : "rgba(26,5,5,0.6)",
+                  border: termsAccepted ? "1px solid rgba(212,160,23,0.3)" : "1px solid rgba(212,160,23,0.15)",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    id="checkoutTerms"
+                  />
+                  <span className="text-xs leading-relaxed" style={{ color: "rgba(255,248,220,0.85)" }}>
+                    Yes, I have read and agree to the{" "}
+                    <a
+                      href="/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline font-medium text-gold-400 hover:text-gold-300"
+                    >
+                      Terms &amp; Conditions
+                    </a>
+                    ,{" "}
+                    <a
+                      href="/refund-policy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline font-medium text-gold-400 hover:text-gold-300"
+                    >
+                      Refund Policy
+                    </a>
+                    , and{" "}
+                    <a
+                      href="/disclaimer"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline font-medium text-gold-400 hover:text-gold-300"
+                    >
+                      Disclaimer
+                    </a>
+                    .
+                  </span>
+                </label>
+              </div>
+
               {isDemoMode ? (
                 <button
                   onClick={handleDemoPayment}
-                  disabled={paying}
-                  className="btn-gold w-full py-4 text-base justify-center"
+                  disabled={paying || !termsAccepted}
+                  className="btn-gold w-full py-4 text-base justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {paying ? (
                     <><Loader2 size={18} className="animate-spin" /> Processing...</>
@@ -273,8 +324,8 @@ function CheckoutInner() {
               ) : (
                 <button
                   onClick={handleRazorpayPayment}
-                  disabled={paying}
-                  className="btn-gold w-full py-4 text-base justify-center"
+                  disabled={paying || !termsAccepted}
+                  className="btn-gold w-full py-4 text-base justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {paying ? (
                     <><Loader2 size={18} className="animate-spin" /> Opening Payment...</>
