@@ -43,9 +43,12 @@ export async function getTicketData(bookingId: string): Promise<TicketData | nul
     if (booking) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
       const ticketTypeNames = booking.bookingItems
-        .map((i) => i.ticketType?.name || "Pass")
+        .map((i: { ticketType?: { name: string } | null; quantity: number }) => i.ticketType?.name || "Pass")
         .join(", ");
-      const totalQuantity = booking.bookingItems.reduce((sum, i) => sum + i.quantity, 0);
+      const totalQuantity = booking.bookingItems.reduce(
+        (sum: number, i: { quantity: number }) => sum + i.quantity,
+        0
+      );
 
       return {
         bookingId: booking.id,
@@ -64,7 +67,7 @@ export async function getTicketData(bookingId: string): Promise<TicketData | nul
           dateText: formatDate(booking.event?.startDateTime || new Date("2026-10-14T18:00:00Z")),
           timeText: formatTime(booking.event?.startDateTime || new Date("2026-10-14T18:00:00Z")),
         },
-        tickets: booking.tickets.map((t) => ({
+        tickets: booking.tickets.map((t: { id: string; token: string; checkedIn: boolean }) => ({
           id: t.id,
           token: t.token,
           verifyUrl: `${baseUrl}/verify/${t.token}`,

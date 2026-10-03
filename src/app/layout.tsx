@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Cinzel, Playfair_Display } from "next/font/google";
+import AISupportWidgetLoader from "@/components/AISupportWidgetLoader";
 import "./globals.css";
 
 const inter = Inter({
@@ -98,6 +99,7 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${cinzel.variable} ${playfair.variable}`}>
       <body className="min-h-screen bg-[#0f0202] font-sans antialiased">
         {children}
+        <AISupportWidgetLoader />
       </body>
     </html>
   );

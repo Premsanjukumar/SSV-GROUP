@@ -245,7 +245,7 @@ function NotFoundPanel({ onBack, onCare }: { onBack: () => void; onCare: () => v
       <div style={{ fontSize: "36px" }}>🤔</div>
       <div>
         <div style={{ color: "rgba(255,248,220,0.85)", fontSize: "14px", fontWeight: 600, marginBottom: "6px" }}>
-          I couldn't find a reliable answer to that.
+          I couldn&apos;t find a reliable answer to that.
         </div>
         <div style={{ color: "rgba(255,248,220,0.5)", fontSize: "12px" }}>
           I only answer from approved information. Would you like to contact our team?
@@ -313,7 +313,7 @@ function HomePanel({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#FFF8DC", fontSize: "13px", placeholder: "rgba(255,248,220,0.3)" }}
+            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#FFF8DC", fontSize: "13px" }}
             aria-label="Ask a support question"
             maxLength={200}
           />
