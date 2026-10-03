@@ -91,6 +91,20 @@ export default function ContactPage() {
                   </div>
                   <span className="text-xs px-2.5 py-1 rounded bg-gold-900/40 text-gold-300 font-medium">Call / WhatsApp</span>
                 </a>
+
+                <a
+                  href="tel:+918431812193"
+                  className="flex items-center justify-between p-4 rounded-xl transition-all border border-gold-800/20 hover:border-gold-500/50 bg-[#150404]"
+                >
+                  <div className="flex items-center gap-3">
+                    <Phone size={18} className="text-gold-400" />
+                    <div>
+                      <div className="text-xs text-gold-400 font-semibold uppercase">Helpline 3</div>
+                      <div className="text-base font-bold text-white tracking-wide">+91 84318 12193</div>
+                    </div>
+                  </div>
+                  <span className="text-xs px-2.5 py-1 rounded bg-gold-900/40 text-gold-300 font-medium">Call / WhatsApp</span>
+                </a>
               </div>
             </div>
 
@@ -115,12 +129,12 @@ export default function ContactPage() {
                 Event Venue
               </h2>
               <p className="text-sm mb-6" style={{ color: "rgba(255,248,220,0.6)" }}>
-                SSV Dandiya Divas 2026 takes place at the prime celebratory grounds in Gumpa, Bidar.
+                SSV Dandiya Night 2026 takes place at the prime celebratory open grounds in Gumpa, Bidar.
               </p>
               <div className="p-4 rounded-xl border border-gold-800/20 bg-[#150404] space-y-2 mb-6">
-                <div className="font-bold text-base text-white">Beside Beladale Petrol Pump</div>
-                <div className="text-sm text-gold-200">Gumpa, Bidar, Karnataka — 585403</div>
-                <div className="text-xs text-gold-400/80">Ample 2-wheeler and 4-wheeler parking available.</div>
+                <div className="font-bold text-base text-white">RS OPEN GROUND</div>
+                <div className="text-sm text-gold-200">Beside Beldale Petrol Pump, Gumpa, Bidar</div>
+                <div className="text-xs text-gold-400/80">Karnataka, India — Ample 2-wheeler & 4-wheeler parking available.</div>
               </div>
             </div>
 

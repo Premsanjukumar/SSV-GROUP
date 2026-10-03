@@ -64,34 +64,79 @@ model TicketType {
   @@index([eventId])
 }
 
+model Customer {
+  id               String            @id @default(cuid())
+  email            String?           @unique
+  phone            String?           @unique
+  name             String?
+  isEmailVerified  Boolean           @default(false)
+  isPhoneVerified  Boolean           @default(false)
+  lastLoginAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  bookings         Booking[]
+  otpVerifications OtpVerification[]
+}
+
+model OtpVerification {
+  id          String    @id @default(cuid())
+  identifier  String
+  type        String    // "EMAIL" | "PHONE"
+  otpHash     String
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  expiresAt   DateTime
+  isUsed      Boolean   @default(false)
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([identifier, type])
+}
+
 model Booking {
-  id                String        @id @default(cuid())
-  bookingRef        String        @unique
-  eventId           String
-  customerName      String
-  customerEmail     String
-  customerPhone     String
-  customerCity      String?
-  totalAmount       Int
-  platformFee       Int           @default(0)
-  grandTotal        Int
-  status            BookingStatus @default(PENDING)
-  paymentStatus     PaymentStatus @default(PENDING)
-  paymentMode       String        @default("demo")
-  razorpayOrderId   String?       @unique
-  razorpayPaymentId String?
-  razorpaySignature String?
-  notes             String?
-  ipAddress         String?
-  userAgent         String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  confirmedAt       DateTime?
-  event        Event         @relation(fields: [eventId], references: [id])
-  bookingItems BookingItem[]
-  payment      Payment?
-  tickets      Ticket[]
-  auditLogs    AuditLog[]
+  id                     String         @id @default(cuid())
+  bookingRef             String         @unique
+  eventId                String
+  customerId             String?
+  customerName           String
+  customerEmail          String
+  customerPhone          String
+  customerCity           String?
+  totalAmount            Int
+  platformFee            Int            @default(0)
+  grandTotal             Int
+  status                 BookingStatus  @default(PENDING)
+  paymentStatus          PaymentStatus  @default(PENDING)
+  paymentMode            String         @default("demo")
+  razorpayOrderId        String?        @unique
+  razorpayPaymentId      String?
+  razorpaySignature      String?
+  notes                  String?
+  ipAddress              String?
+  userAgent              String?
+  emailDeliveryStatus    DeliveryStatus @default(PENDING)
+  emailSentAt            DateTime?
+  emailError             String?
+  smsDeliveryStatus      DeliveryStatus @default(PENDING)
+  smsSentAt              DateTime?
+  smsProviderId          String?
+  smsError               String?
+  whatsappDeliveryStatus DeliveryStatus @default(NOT_REQUESTED)
+  whatsappSentAt         DateTime?
+  whatsappProviderId     String?
+  whatsappError          String?
+  whatsappOptIn          Boolean        @default(false)
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+  confirmedAt            DateTime?
+  customer               Customer?      @relation(fields: [customerId], references: [id])
+  event                  Event          @relation(fields: [eventId], references: [id])
+  bookingItems           BookingItem[]
+  payment                Payment?
+  tickets                Ticket[]
+  auditLogs              AuditLog[]
 }
 
 model BookingItem {
@@ -200,4 +245,13 @@ enum PaymentStatus {
   FAILED
   CANCELLED
   REFUNDED
+}
+
+enum DeliveryStatus {
+  NOT_REQUESTED
+  PENDING
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
 }

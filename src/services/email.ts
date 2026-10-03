@@ -164,6 +164,19 @@ export async function sendBookingConfirmation(
   data: BookingConfirmationData,
   pdfBuffer?: Buffer
 ): Promise<{ success: boolean; error?: string }> {
+  const isMock =
+    process.env.EMAIL_MODE === "mock" ||
+    (!process.env.SMTP_HOST && process.env.NODE_ENV !== "production");
+
+  if (isMock) {
+    if (process.env.NODE_ENV !== "production") {
+      console.log(
+        `[EMAIL:DEV-MOCK] Confirmation sent to ${data.customerEmail} for ${data.bookingRef}`
+      );
+    }
+    return { success: true };
+  }
+
   const config = getEmailConfig();
 
   if (!config) {
@@ -206,3 +219,84 @@ export async function sendBookingConfirmation(
     return { success: false, error: msg };
   }
 }
+
+export async function sendOtpEmail(
+  email: string,
+  otp: string
+): Promise<{ success: boolean; error?: string }> {
+  const isMock =
+    process.env.EMAIL_MODE === "mock" ||
+    (!process.env.SMTP_HOST && process.env.NODE_ENV !== "production");
+
+  if (isMock) {
+    if (process.env.NODE_ENV !== "production") {
+      console.log(
+        `[EMAIL:DEV-MOCK] OTP for ${email}: ${otp} (expires in 5 minutes)`
+      );
+    }
+    return { success: true };
+  }
+
+  const config = getEmailConfig();
+
+  if (!config) {
+    return { success: false, error: "SMTP service not configured in production." };
+  }
+
+  try {
+    const transporter = createTransporter(config);
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Your Verification Code — SSV Dandiya Divas 2026</title>
+  <style>
+    body { font-family: Georgia, serif; background: #1a0505; margin: 0; padding: 0; }
+    .box { max-width: 500px; margin: 20px auto; background: #ffffff; border-radius: 12px; overflow: hidden; }
+    .header { background: linear-gradient(135deg, #6D0B0B, #8B0000); padding: 30px; text-align: center; }
+    .header h1 { color: #D4A017; margin: 0; font-size: 22px; letter-spacing: 2px; }
+    .content { padding: 30px 25px; color: #333; }
+    .otp-card { background: #FFF8F0; border: 2px dashed #D4A017; border-radius: 8px; text-align: center; padding: 20px; margin: 20px 0; }
+    .otp-code { font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #8B0000; font-family: monospace; }
+    .footer { text-align: center; color: #888; font-size: 12px; padding: 20px; background: #fdfdfd; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="header">
+      <h1>🎊 SSV DANDIYA DIVAS 2026</h1>
+    </div>
+    <div class="content">
+      <p style="font-size: 16px;">Namaste! 🙏</p>
+      <p style="color: #555; line-height: 1.5;">Use the verification code below to securely log in and continue with your ticket booking:</p>
+      
+      <div class="otp-card">
+        <div style="font-size: 12px; text-transform: uppercase; color: #8B0000; font-weight: bold; margin-bottom: 8px;">Your One-Time Password (OTP)</div>
+        <div class="otp-code">${otp}</div>
+      </div>
+
+      <p style="color: #666; font-size: 13px;">⏱️ <strong>Note:</strong> This verification code expires in <strong>5 minutes</strong>. For your security, never share this code with anyone.</p>
+    </div>
+    <div class="footer">
+      © 2026 SSV Group • Bidar, Karnataka • Secure Customer Authentication
+    </div>
+  </div>
+</body>
+</html>
+    `.trim();
+
+    await transporter.sendMail({
+      from: config.from,
+      to: email,
+      subject: `🔐 ${otp} is your SSV Dandiya Divas Verification Code`,
+      html,
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("[EMAIL] OTP send error:", error?.message || error);
+    return { success: false, error: error?.message || "Email send failed" };
+  }
+}
+

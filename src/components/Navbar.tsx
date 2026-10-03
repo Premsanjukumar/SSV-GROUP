@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { Menu, X, Ticket } from "lucide-react";
 
+import SSVLogo from "@/components/SSVLogo";
+
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/event", label: "Event" },
@@ -23,31 +25,23 @@ export default function Navbar() {
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link href="/" className="flex items-center gap-2 group">
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-display font-bold"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #8B0000, #C0392B)",
-                  border: "1px solid rgba(212,160,23,0.4)",
-                  color: "#D4A017",
-                }}
-              >
-                S
+            {/* Logo with Divine Ganesha Icon */}
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="transition-transform duration-300 group-hover:scale-110">
+                <SSVLogo size={38} />
               </div>
-              <div className="leading-none">
-                <div
-                  className="text-xs font-display font-bold tracking-widest"
-                  style={{ color: "#D4A017" }}
-                >
-                  SSV GROUP
+              <div className="leading-tight">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="text-sm font-display font-black tracking-widest ssv-gold-gradient"
+                  >
+                    SSV GROUP
+                  </span>
                 </div>
                 <div
-                  className="text-[9px] tracking-widest uppercase"
-                  style={{ color: "rgba(255,248,220,0.5)" }}
+                  className="text-[10px] font-semibold tracking-wider uppercase text-amber-200/70"
                 >
-                  Dandiya Divas 2026
+                  Together for More Joy
                 </div>
               </div>
             </Link>
