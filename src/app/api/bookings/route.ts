@@ -2,16 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createBooking } from "@/services/payment";
 import { BookingFormSchema } from "@/validators";
-import { getClientIp, checkRateLimit, sanitizePhone, generateBookingRef } from "@/lib/utils";
+import { getClientIp, checkRateLimit, sanitizePhone } from "@/lib/utils";
+
+// ============================================================
+// POST /api/bookings
+// Creates a pending booking with capacity reservation.
+// Prices are derived strictly from database records.
+// ============================================================
 
 export async function POST(req: NextRequest) {
   const ip = getClientIp(req.headers);
 
-  // Rate limiting: 5 bookings per 15 minutes per IP
-  const isAllowed = checkRateLimit(`booking:${ip}`, 5, 15 * 60 * 1000);
+  // Rate limiting: 10 booking initiations per 10 minutes per IP
+  const isAllowed = checkRateLimit(`booking-init:${ip}`, 10, 10 * 60 * 1000);
   if (!isAllowed) {
     return NextResponse.json(
-      { error: "Too many requests. Please try again later." },
+      { error: "Too many booking requests. Please wait a few moments before trying again." },
       { status: 429 }
     );
   }
@@ -20,49 +26,46 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON request body" }, { status: 400 });
   }
 
-  // Validate input
+  // Validate input schema with Zod
   const result = BookingFormSchema.safeParse({
     ...(body as Record<string, unknown>),
-    customerPhone: sanitizePhone(String((body as Record<string, unknown>).customerPhone || "")),
+    customerPhone: sanitizePhone(String((body as Record<string, unknown>)?.customerPhone || "")),
   });
 
   if (!result.success) {
     const firstError = result.error.errors[0];
     return NextResponse.json(
-      { error: firstError.message || "Invalid input" },
+      { error: firstError?.message || "Invalid booking data provided" },
       { status: 400 }
     );
   }
 
   const data = result.data;
 
-  // Female-only validation check
-  let isWomenOnly = data.ticketTypeId.toLowerCase().includes("single");
+  // Single Pass / Women Only confirmation check
   try {
     const tt = await prisma.ticketType.findUnique({
       where: { id: data.ticketTypeId },
       select: { womenOnly: true, name: true },
     });
-    if (tt) {
-      isWomenOnly = tt.womenOnly || tt.name.toLowerCase().includes("single");
-    }
-  } catch {
-    // DB fallback: rely on ticketTypeId inspection
-  }
 
-  if (isWomenOnly && !data.femaleConfirmation) {
-    return NextResponse.json(
-      { error: "You must confirm eligibility for the Single Pass (Women Only)" },
-      { status: 400 }
-    );
+    const isWomenOnly = tt?.womenOnly || tt?.name.toLowerCase().includes("single") || data.ticketTypeId.toLowerCase().includes("single");
+    if (isWomenOnly && !data.femaleConfirmation) {
+      return NextResponse.json(
+        { error: "You must confirm that the Single Pass is for an eligible female attendee." },
+        { status: 400 }
+      );
+    }
+  } catch (err) {
+    console.warn("[Booking Validation Check Warning]", err instanceof Error ? err.message : err);
   }
 
   try {
     const booking = await createBooking({
-      eventId: data.eventId === "auto" ? "ssv-dandiya-2026-demo" : data.eventId,
+      eventId: data.eventId,
       ticketTypeId: data.ticketTypeId,
       quantity: data.quantity,
       customerName: data.customerName,
@@ -70,6 +73,9 @@ export async function POST(req: NextRequest) {
       customerPhone: data.customerPhone,
       customerCity: data.customerCity,
       attendeeNames: data.attendeeNames,
+      ipAddress: ip,
+      userAgent: req.headers.get("user-agent") || undefined,
+      whatsappOptIn: Boolean((body as { whatsappOptIn?: boolean })?.whatsappOptIn),
     });
 
     return NextResponse.json({
@@ -78,18 +84,20 @@ export async function POST(req: NextRequest) {
       totalInPaise: booking.totalInPaise,
     });
   } catch (error) {
-    console.warn("[API /bookings] DB booking fallback activated:", (error as Error).message);
+    const errorMsg = error instanceof Error ? error.message : "Booking initiation failed";
 
-    // Fallback simulated booking creation if DB is offline
-    const unitPrice = data.ticketTypeId.includes("couple") ? 49900 : 29900;
-    const totalInPaise = unitPrice * data.quantity;
-    const bookingRef = generateBookingRef();
-    const demoBookingId = `demo_booking_${Date.now()}`;
+    if (errorMsg.includes("SOLD_OUT") || errorMsg.includes("remaining") || errorMsg.includes("closed") || errorMsg.includes("Maximum")) {
+      return NextResponse.json(
+        { error: errorMsg === "SOLD_OUT" ? "Sorry, this ticket tier is currently sold out." : errorMsg },
+        { status: 400 }
+      );
+    }
 
-    return NextResponse.json({
-      bookingId: demoBookingId,
-      bookingRef,
-      totalInPaise,
-    });
+    console.error("[BOOKING_CREATION_FAILED]", errorMsg);
+
+    return NextResponse.json(
+      { error: "Unable to create booking. Please try again or contact support." },
+      { status: 500 }
+    );
   }
 }

@@ -1,19 +1,62 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
-import { requireAdmin, ok, fail } from "@/lib/http";
-import { scanToken } from "@/services/scan";
-import { prismaScanDb } from "@/services/scanDb";
-import { deriveTicketToken } from "@/lib/tokens";
+import { prisma } from "@/lib/prisma";
+import { getAdminSessionFromRequest } from "@/lib/auth";
+import { verifyAndCheckInTicket } from "@/services/payment";
+
+const ManualCheckinSchema = z.object({
+  reference: z.string().min(3).max(60),
+});
 
 export async function POST(req: NextRequest) {
   try {
-    const s = await requireAdmin(req); if (!s) return ok({ error: "Unauthorized." }, 401);
-    const p = z.object({ reference: z.string().min(5).max(40) }).safeParse(await req.json().catch(() => null));
-    if (!p.success) return ok({ error: "Enter a booking ID." }, 400);
-    const t = await db.ticket.findFirst({ where: { booking: { reference: p.data.reference.toUpperCase() } }, orderBy: { checkedInAt: "asc" } });
-    if (!t) return ok({ result: "INVALID" });
-    await db.auditLog.create({ data: { adminId: s.id, action: "MANUAL_CHECKIN", detail: { ticketId: t.id } } });
-    return ok(await scanToken(prismaScanDb, deriveTicketToken(t.id, process.env.AUTH_SECRET ?? ""), s.id, true));
-  } catch (e) { return fail(e); }
+    const session = await getAdminSessionFromRequest(req);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => null);
+    const parsed = ManualCheckinSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Please enter a valid booking ID or reference." }, { status: 400 });
+    }
+
+    const query = parsed.data.reference.trim().toUpperCase();
+
+    // Find ticket by Booking Reference or Booking ID
+    const ticket = await prisma.ticket.findFirst({
+      where: {
+        OR: [
+          { booking: { bookingRef: query } },
+          { booking: { id: query.toLowerCase() } },
+          { token: query },
+        ],
+      },
+      orderBy: { checkedIn: "asc" }, // prioritize unchecked tickets
+    });
+
+    if (!ticket) {
+      return NextResponse.json({
+        valid: false,
+        status: "NOT_FOUND",
+        message: "No ticket found for this booking reference.",
+      });
+    }
+
+    // Log manual checkin audit entry
+    await prisma.auditLog.create({
+      data: {
+        adminId: session.adminId,
+        action: "MANUAL_CHECKIN",
+        details: { ticketId: ticket.id, query },
+      },
+    }).catch(() => null);
+
+    const result = await verifyAndCheckInTicket(ticket.token, session.adminId);
+    return NextResponse.json(result);
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Manual checkin error";
+    console.error("[MANUAL_CHECKIN_ERROR]", errorMsg);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

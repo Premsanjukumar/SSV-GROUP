@@ -1,69 +1,80 @@
-import { db } from "@/lib/db";
-import { deriveTicketToken } from "@/lib/tokens";
-import { appUrl, formatEventDate, formatEventTime } from "@/lib/event";
+import { prisma } from "@/lib/prisma";
+import { formatDate, formatTime } from "@/lib/utils";
 
 export interface TicketData {
-  bookingId: string; reference: string; name: string; email: string; status: string;
-  ticketType: string; quantity: number;
-  event: { name: string; venue: string; dateText: string; timeText: string };
-  tickets: { id: string; verifyUrl: string }[];
+  bookingId: string;
+  reference: string;
+  name: string;
+  email: string;
+  phone?: string;
+  status: string;
+  ticketType: string;
+  quantity: number;
+  totalInPaise: number;
+  event: {
+    name: string;
+    venue: string;
+    city: string;
+    dateText: string;
+    timeText: string;
+  };
+  tickets: {
+    id: string;
+    token: string;
+    verifyUrl: string;
+    checkedIn: boolean;
+  }[];
 }
 
+/**
+ * Authoritative ticket retrieval for digital ticket view & pass generation.
+ */
 export async function getTicketData(bookingId: string): Promise<TicketData | null> {
   try {
-    const b = await db.booking.findUnique({
+    const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { event: true, tickets: true, items: { include: { ticketType: true } } },
+      include: {
+        event: true,
+        tickets: true,
+        bookingItems: { include: { ticketType: true } },
+      },
     });
 
-    if (b) {
-      const secret = process.env.AUTH_SECRET ?? "";
+    if (booking) {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const ticketTypeNames = booking.bookingItems
+        .map((i) => i.ticketType?.name || "Pass")
+        .join(", ");
+      const totalQuantity = booking.bookingItems.reduce((sum, i) => sum + i.quantity, 0);
+
       return {
-        bookingId: b.id,
-        reference: b.reference,
-        name: b.name,
-        email: b.email,
-        status: b.status,
-        ticketType: b.items.map((i: { ticketType: { name: string } }) => i.ticketType.name).join(", "),
-        quantity: b.items.reduce((n: number, i: { quantity: number }) => n + i.quantity, 0),
+        bookingId: booking.id,
+        reference: booking.bookingRef,
+        name: booking.customerName,
+        email: booking.customerEmail,
+        phone: booking.customerPhone,
+        status: booking.status,
+        ticketType: ticketTypeNames || "General Pass",
+        quantity: totalQuantity || 1,
+        totalInPaise: booking.grandTotal,
         event: {
-          name: b.event.name,
-          venue: `${b.event.venue}, ${b.event.city}`,
-          dateText: formatEventDate(b.event.startDateTime),
-          timeText: formatEventTime(b.event.startDateTime),
+          name: booking.event?.name || "SSV Dandiya Divas 2026",
+          venue: booking.event?.venue || "RS Open Ground, Beside Beldale Petrol Pump, Gumpa",
+          city: booking.event?.city || "Bidar",
+          dateText: formatDate(booking.event?.startDateTime || new Date("2026-10-14T18:00:00Z")),
+          timeText: formatTime(booking.event?.startDateTime || new Date("2026-10-14T18:00:00Z")),
         },
-        tickets: b.status === "PAID"
-          ? b.tickets.map((t: { id: string }) => ({
-              id: t.id,
-              verifyUrl: `${appUrl()}/verify/${deriveTicketToken(t.id, secret)}`,
-            }))
-          : [],
+        tickets: booking.tickets.map((t) => ({
+          id: t.id,
+          token: t.token,
+          verifyUrl: `${baseUrl}/verify/${t.token}`,
+          checkedIn: t.checkedIn,
+        })),
       };
     }
   } catch (err) {
-    console.warn("[getTicketData] DB query fallback activated:", (err as Error).message);
+    console.warn("[getTicketData] Error querying booking:", err instanceof Error ? err.message : err);
   }
 
-  // Fallback demo ticket data when database is offline or demo booking
-  return {
-    bookingId,
-    reference: "SSV-DANDIYA-DEMO01",
-    name: "Guest Visitor",
-    email: "guest@example.com",
-    status: "PAID",
-    ticketType: "Single Pass",
-    quantity: 1,
-    event: {
-      name: "SSV Dandiya Divas 2026",
-      venue: "Beside Beladale Petrol Pump, Gumpa, Bidar",
-      dateText: "14 October 2026, Wednesday",
-      timeText: "5:00 PM Onwards",
-    },
-    tickets: [
-      {
-        id: "demo-ticket-01",
-        verifyUrl: `${appUrl()}/verify/demo-ticket-token-123456`,
-      },
-    ],
-  };
+  return null;
 }

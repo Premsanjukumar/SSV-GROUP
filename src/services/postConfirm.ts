@@ -5,8 +5,30 @@ import { sendBookingSms } from "./sms";
 import { sendBookingWhatsApp } from "./whatsapp";
 import { formatDate, formatTime } from "@/lib/utils";
 
-// Runs after a payment is confirmed. Never throws: a failed email or PDF must not undo a paid booking.
-export async function afterPayment(bookingId: string) {
+// ============================================================
+// DECOUPLED POST-PAYMENT DELIVERY SERVICE
+// Dispatches tickets, transactional emails, SMS, and WhatsApp.
+// Delivery status is tracked independently per channel.
+// Failures NEVER undo confirmed payments.
+// ============================================================
+
+export interface DeliveryResult {
+  emailSent: boolean;
+  smsSent: boolean;
+  whatsappSent: boolean;
+}
+
+/**
+ * Executes post-payment asynchronous fulfillment (Email, SMS, WhatsApp).
+ * Safe and decoupled: uses channel-specific delivery status guards.
+ */
+export async function afterPayment(bookingId: string): Promise<DeliveryResult> {
+  const result: DeliveryResult = {
+    emailSent: false,
+    smsSent: false,
+    whatsappSent: false,
+  };
+
   try {
     const booking = await prisma.booking.findUnique({
       where: { id: bookingId },
@@ -17,21 +39,18 @@ export async function afterPayment(bookingId: string) {
       },
     });
 
-    if (!booking || booking.status !== BookingStatus.CONFIRMED) return;
-    if (booking.confirmedAt) return; // already sent/processed
-
-    await prisma.booking.update({
-      where: { id: bookingId },
-      data: { confirmedAt: new Date() },
-    });
+    if (!booking || booking.status !== BookingStatus.CONFIRMED) {
+      console.warn(`[postConfirm] Booking ${bookingId} is not confirmed. Skipping delivery.`);
+      return result;
+    }
 
     const ticketItem = booking.bookingItems[0];
-    const ticketType = ticketItem?.ticketType.name || "Pass";
+    const ticketType = ticketItem?.ticketType?.name || "Pass";
     const quantity = ticketItem?.quantity || 1;
     const firstTicket = booking.tickets[0];
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const verifyUrl = firstTicket
+    const ticketUrl = firstTicket
       ? `${baseUrl}/ticket/${booking.id}`
       : `${baseUrl}/booking/success?bookingId=${booking.id}`;
 
@@ -39,103 +58,149 @@ export async function afterPayment(bookingId: string) {
     const formattedTime = formatTime(booking.event.startDateTime);
     const venueStr = `${booking.event.venue}, ${booking.event.city}`;
 
-    // 1. Generate PDF Ticket
-    const pdfData = {
-      bookingRef: booking.bookingRef,
-      customerName: booking.customerName,
-      customerEmail: booking.customerEmail,
-      customerPhone: booking.customerPhone,
-      ticketType,
-      quantity,
-      totalInPaise: booking.grandTotal,
-      eventName: booking.event.name,
-      eventDate: formattedDate,
-      eventTime: formattedTime,
-      venue: venueStr,
-      verifyUrl,
-      status: "CONFIRMED",
-    };
-
-    const pdfBuffer = await generateTicketPDF(pdfData).catch((e: any) => {
-      console.error("[pdf] failed to generate PDF:", e?.message || e);
-      return null;
-    });
-
-    // 2. Dispatch Email Confirmation & Track Status
-    const emailData = {
-      customerName: booking.customerName,
-      customerEmail: booking.customerEmail,
-      bookingRef: booking.bookingRef,
-      ticketType,
-      quantity,
-      totalInPaise: booking.grandTotal,
-      eventDate: formattedDate,
-      eventTime: formattedTime,
-      venue: venueStr,
-      ticketUrl: verifyUrl,
-    };
-
-    const emailRes = await sendBookingConfirmation(
-      emailData,
-      pdfBuffer || undefined
-    );
-
-    await prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        emailDeliveryStatus: emailRes.success
-          ? DeliveryStatus.SENT
-          : DeliveryStatus.FAILED,
-        emailSentAt: emailRes.success ? new Date() : undefined,
-        emailError: emailRes.error || null,
-      },
-    });
-
-    // 3. Dispatch SMS Confirmation & Track Status
-    const smsRes = await sendBookingSms(booking.customerPhone, {
-      bookingRef: booking.bookingRef,
-      ticketType,
-      eventDate: formattedDate,
-      ticketUrl: verifyUrl,
-    });
-
-    await prisma.booking.update({
-      where: { id: bookingId },
-      data: {
-        smsDeliveryStatus: smsRes.success
-          ? DeliveryStatus.SENT
-          : DeliveryStatus.FAILED,
-        smsSentAt: smsRes.success ? new Date() : undefined,
-        smsProviderId: smsRes.providerId || null,
-        smsError: smsRes.error || null,
-      },
-    });
-
-    // 4. Dispatch WhatsApp if customer already opted-in
-    if (booking.whatsappOptIn) {
-      const waRes = await sendBookingWhatsApp(booking.customerPhone, {
-        customerName: booking.customerName,
+    // 1. GENERATE PDF TICKET (If needed for email)
+    let pdfBuffer: Buffer | null = null;
+    try {
+      pdfBuffer = await generateTicketPDF({
         bookingRef: booking.bookingRef,
+        customerName: booking.customerName,
+        customerEmail: booking.customerEmail,
+        customerPhone: booking.customerPhone,
         ticketType,
         quantity,
+        totalInPaise: booking.grandTotal,
+        eventName: booking.event.name,
         eventDate: formattedDate,
+        eventTime: formattedTime,
         venue: venueStr,
-        ticketUrl: verifyUrl,
+        verifyUrl: ticketUrl,
+        status: "CONFIRMED",
       });
-
-      await prisma.booking.update({
-        where: { id: bookingId },
-        data: {
-          whatsappDeliveryStatus: waRes.success
-            ? DeliveryStatus.SENT
-            : DeliveryStatus.FAILED,
-          whatsappSentAt: waRes.success ? new Date() : undefined,
-          whatsappProviderId: waRes.providerId || null,
-          whatsappError: waRes.error || null,
-        },
-      });
+    } catch (pdfErr) {
+      console.error("[postConfirm] PDF ticket generation error:", pdfErr instanceof Error ? pdfErr.message : pdfErr);
     }
-  } catch (e: any) {
-    console.error("[postConfirm]", e instanceof Error ? e.message : "unknown");
+
+    // 2. TRANSACTIONAL EMAIL CONFIRMATION
+    if (booking.emailDeliveryStatus !== DeliveryStatus.SENT && booking.customerEmail) {
+      try {
+        const emailRes = await sendBookingConfirmation(
+          {
+            customerName: booking.customerName,
+            customerEmail: booking.customerEmail,
+            bookingRef: booking.bookingRef,
+            ticketType,
+            quantity,
+            totalInPaise: booking.grandTotal,
+            eventDate: formattedDate,
+            eventTime: formattedTime,
+            venue: venueStr,
+            ticketUrl,
+          },
+          pdfBuffer || undefined
+        );
+
+        await prisma.booking.update({
+          where: { id: bookingId },
+          data: {
+            emailDeliveryStatus: emailRes.success ? DeliveryStatus.SENT : DeliveryStatus.FAILED,
+            emailSentAt: emailRes.success ? new Date() : undefined,
+            emailError: emailRes.error || null,
+          },
+        });
+
+        result.emailSent = Boolean(emailRes.success);
+      } catch (emailErr) {
+        const msg = emailErr instanceof Error ? emailErr.message : "Email sending failed";
+        console.error("[postConfirm] Email delivery failed:", msg);
+        await prisma.booking.update({
+          where: { id: bookingId },
+          data: {
+            emailDeliveryStatus: DeliveryStatus.FAILED,
+            emailError: msg,
+          },
+        }).catch(() => null);
+      }
+    } else if (booking.emailDeliveryStatus === DeliveryStatus.SENT) {
+      result.emailSent = true;
+    }
+
+    // 3. TRANSACTIONAL SMS CONFIRMATION
+    if (booking.smsDeliveryStatus !== DeliveryStatus.SENT && booking.customerPhone) {
+      try {
+        const smsRes = await sendBookingSms(booking.customerPhone, {
+          bookingRef: booking.bookingRef,
+          ticketType,
+          eventDate: formattedDate,
+          ticketUrl,
+        });
+
+        await prisma.booking.update({
+          where: { id: bookingId },
+          data: {
+            smsDeliveryStatus: smsRes.success ? DeliveryStatus.SENT : DeliveryStatus.FAILED,
+            smsSentAt: smsRes.success ? new Date() : undefined,
+            smsProviderId: smsRes.providerId || null,
+            smsError: smsRes.error || null,
+          },
+        });
+
+        result.smsSent = Boolean(smsRes.success);
+      } catch (smsErr) {
+        const msg = smsErr instanceof Error ? smsErr.message : "SMS sending failed";
+        console.error("[postConfirm] SMS delivery failed:", msg);
+        await prisma.booking.update({
+          where: { id: bookingId },
+          data: {
+            smsDeliveryStatus: DeliveryStatus.FAILED,
+            smsError: msg,
+          },
+        }).catch(() => null);
+      }
+    } else if (booking.smsDeliveryStatus === DeliveryStatus.SENT) {
+      result.smsSent = true;
+    }
+
+    // 4. TRANSACTIONAL WHATSAPP CONFIRMATION (Explicit customer opt-in required)
+    if (booking.whatsappOptIn && booking.whatsappDeliveryStatus !== DeliveryStatus.SENT && booking.customerPhone) {
+      try {
+        const waRes = await sendBookingWhatsApp(booking.customerPhone, {
+          customerName: booking.customerName,
+          bookingRef: booking.bookingRef,
+          ticketType,
+          quantity,
+          eventDate: formattedDate,
+          venue: venueStr,
+          ticketUrl,
+        });
+
+        await prisma.booking.update({
+          where: { id: bookingId },
+          data: {
+            whatsappDeliveryStatus: waRes.success ? DeliveryStatus.SENT : DeliveryStatus.FAILED,
+            whatsappSentAt: waRes.success ? new Date() : undefined,
+            whatsappProviderId: waRes.providerId || null,
+            whatsappError: waRes.error || null,
+          },
+        });
+
+        result.whatsappSent = Boolean(waRes.success);
+      } catch (waErr) {
+        const msg = waErr instanceof Error ? waErr.message : "WhatsApp delivery failed";
+        console.error("[postConfirm] WhatsApp delivery failed:", msg);
+        await prisma.booking.update({
+          where: { id: bookingId },
+          data: {
+            whatsappDeliveryStatus: DeliveryStatus.FAILED,
+            whatsappError: msg,
+          },
+        }).catch(() => null);
+      }
+    } else if (booking.whatsappDeliveryStatus === DeliveryStatus.SENT) {
+      result.whatsappSent = true;
+    }
+  } catch (err) {
+    console.error("[postConfirm] Unexpected processing error:", err instanceof Error ? err.message : err);
   }
+
+  return result;
 }

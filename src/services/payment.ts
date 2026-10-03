@@ -1,64 +1,91 @@
 import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma, BookingStatus, PaymentStatus } from "@/lib/prisma";
-import {
-  generateTicketToken,
-  generateBookingRef,
-} from "@/lib/utils";
+import { generateTicketToken, generateBookingRef } from "@/lib/utils";
 
 // ============================================================
-// RAZORPAY / PAYMENT SERVICE
+// CANONICAL PAYMENT & BOOKING SERVICE
+// Authoritative service for Razorpay integration, booking
+// state transitions, and ticket issuance.
 // ============================================================
 
-const PAYMENT_MODE = process.env.PAYMENT_MODE || "demo";
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
+export const PAYMENT_MODES = {
+  DEMO: "demo",
+  RAZORPAY: "razorpay",
+} as const;
+
+export type PaymentModeType = (typeof PAYMENT_MODES)[keyof typeof PAYMENT_MODES];
 
 /**
- * Validate the payment mode is safe
+ * Returns current payment mode.
+ * In production, default must be razorpay.
  */
-export function validatePaymentMode(): void {
-  if (IS_PRODUCTION && PAYMENT_MODE === "demo") {
-    console.error(
-      "⚠️  CRITICAL: PAYMENT_MODE=demo in production! Real payments will NOT be processed."
-    );
+export function getPaymentMode(): PaymentModeType {
+  const envMode = process.env.PAYMENT_MODE?.toLowerCase();
+  if (process.env.NODE_ENV === "production") {
+    return envMode === "razorpay" ? "razorpay" : "razorpay";
   }
-}
-
-export function isDemoMode(): boolean {
-  return PAYMENT_MODE === "demo";
+  return envMode === "razorpay" ? "razorpay" : "demo";
 }
 
 /**
- * Create a Razorpay order via their API
+ * Validates whether demo payments are allowed in the current environment.
  */
-export async function createRazorpayOrder(params: {
+export function isDemoPaymentAllowed(): boolean {
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+  return (process.env.PAYMENT_MODE || "demo") === "demo";
+}
+
+// ============================================================
+// RAZORPAY API INTEGRATION
+// ============================================================
+
+export interface CreateOrderParams {
   amountInPaise: number;
   bookingRef: string;
+  currency?: string;
   notes?: Record<string, string>;
-}): Promise<{
+}
+
+export interface CreateOrderResult {
   orderId: string;
   amount: number;
   currency: string;
   keyId: string;
-}> {
-  const keyId = process.env.RAZORPAY_KEY_ID;
+}
+
+/**
+ * Creates an authoritative Razorpay order on Razorpay servers.
+ * Amount MUST be calculated on the server in integer paise.
+ */
+export async function createRazorpayOrder(
+  params: CreateOrderParams
+): Promise<CreateOrderResult> {
+  const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
   if (!keyId || !keySecret) {
-    throw new Error("Razorpay credentials not configured");
+    throw new Error("Razorpay credentials are not configured on the server");
   }
 
-  const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+  if (!params.amountInPaise || params.amountInPaise <= 0) {
+    throw new Error("Invalid order amount: must be greater than 0");
+  }
+
+  const currency = params.currency || "INR";
+  const authHeader = `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`;
 
   const response = await fetch("https://api.razorpay.com/v1/orders", {
     method: "POST",
     headers: {
-      Authorization: `Basic ${auth}`,
+      Authorization: authHeader,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      amount: params.amountInPaise,
-      currency: "INR",
+      amount: Math.round(params.amountInPaise),
+      currency,
       receipt: params.bookingRef,
       notes: {
         booking_ref: params.bookingRef,
@@ -68,75 +95,93 @@ export async function createRazorpayOrder(params: {
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Razorpay order creation failed: ${error}`);
+    const errorText = await response.text();
+    console.error("[Razorpay API Error]", response.status, errorText);
+    throw new Error(`Razorpay order creation failed: ${response.statusText}`);
   }
 
-  const order = await response.json();
+  const orderData = await response.json();
+
   return {
-    orderId: order.id,
-    amount: order.amount,
-    currency: order.currency,
+    orderId: orderData.id,
+    amount: orderData.amount,
+    currency: orderData.currency,
     keyId,
   };
 }
 
 /**
- * Verify Razorpay payment signature server-side
+ * Timing-safe HMAC SHA-256 verification of Razorpay checkout signature.
+ * Verifies: HMAC_SHA256(orderId + "|" + paymentId, keySecret) === signature
  */
 export function verifyRazorpaySignature(params: {
   orderId: string;
   paymentId: string;
   signature: string;
+  secret?: string;
 }): boolean {
-  const secret = process.env.RAZORPAY_KEY_SECRET;
-  if (!secret) return false;
-
-  const expectedSignature = crypto
-    .createHmac("sha256", secret)
-    .update(`${params.orderId}|${params.paymentId}`)
-    .digest("hex");
+  const secret = params.secret || process.env.RAZORPAY_KEY_SECRET;
+  if (!secret || !params.orderId || !params.paymentId || !params.signature) {
+    return false;
+  }
 
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(expectedSignature, "utf8"),
-      Buffer.from(params.signature, "utf8")
-    );
+    const expectedSignature = crypto
+      .createHmac("sha256", secret)
+      .update(`${params.orderId}|${params.paymentId}`)
+      .digest("hex");
+
+    const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+    const providedBuffer = Buffer.from(params.signature, "utf8");
+
+    if (expectedBuffer.length !== providedBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
   } catch {
     return false;
   }
 }
 
 /**
- * Verify Razorpay webhook signature
+ * Timing-safe HMAC SHA-256 verification of Razorpay webhook signature.
+ * Verifies: HMAC_SHA256(rawRequestBody, webhookSecret) === signature
  */
 export function verifyWebhookSignature(
-  body: string,
-  signature: string
+  rawBody: string,
+  signature: string,
+  webhookSecret?: string
 ): boolean {
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  if (!secret) return false;
-
-  const expectedSignature = crypto
-    .createHmac("sha256", secret)
-    .update(body)
-    .digest("hex");
+  const secret = webhookSecret || process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!secret || !rawBody || !signature) {
+    return false;
+  }
 
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(expectedSignature, "utf8"),
-      Buffer.from(signature, "utf8")
-    );
+    const expectedSignature = crypto
+      .createHmac("sha256", secret)
+      .update(rawBody)
+      .digest("hex");
+
+    const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+    const providedBuffer = Buffer.from(signature, "utf8");
+
+    if (expectedBuffer.length !== providedBuffer.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(expectedBuffer, providedBuffer);
   } catch {
     return false;
   }
 }
 
 // ============================================================
-// BOOKING CREATION
+// TRANSACTIONAL BOOKING CREATION
 // ============================================================
 
-export interface CreateBookingParams {
+export interface CreateBookingInput {
   eventId: string;
   ticketTypeId: string;
   quantity: number;
@@ -145,21 +190,30 @@ export interface CreateBookingParams {
   customerPhone: string;
   customerCity?: string;
   attendeeNames?: string[];
+  ipAddress?: string;
+  userAgent?: string;
+  whatsappOptIn?: boolean;
 }
 
-export interface CreateBookingResult {
+export interface CreateBookingOutput {
   bookingId: string;
   bookingRef: string;
   totalInPaise: number;
+  ticketTypeName: string;
+  unitPrice: number;
 }
 
+/**
+ * Creates a pending booking and pending payment record within a database transaction.
+ * Validates capacity, ticket availability, and calculates amount strictly from database.
+ */
 export async function createBooking(
-  params: CreateBookingParams
-): Promise<CreateBookingResult> {
+  input: CreateBookingInput
+): Promise<CreateBookingOutput> {
   return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    // 1. Fetch ticket type
+    // 1. Fetch ticket type and event from database
     const ticketType = await tx.ticketType.findUnique({
-      where: { id: params.ticketTypeId },
+      where: { id: input.ticketTypeId },
       include: { event: true },
     });
 
@@ -167,97 +221,123 @@ export async function createBooking(
       throw new Error("Ticket type not found");
     }
 
-    if (!ticketType.isActive) {
-      throw new Error("Ticket sales are currently closed");
-    }
-
-    if (ticketType.eventId !== params.eventId) {
-      throw new Error("Invalid ticket type for this event");
+    if (!ticketType.isActive || !ticketType.event.isPublished) {
+      throw new Error("Ticket sales are currently not available for this event");
     }
 
     const now = new Date();
     if (ticketType.salesStart && now < ticketType.salesStart) {
-      throw new Error("Ticket sales have not started yet");
+      throw new Error("Ticket sales have not opened yet");
     }
     if (ticketType.salesEnd && now > ticketType.salesEnd) {
-      throw new Error("Ticket sales have ended");
+      throw new Error("Ticket sales have closed");
     }
 
-    if (params.quantity > ticketType.maxPerOrder) {
-      throw new Error(`Maximum ${ticketType.maxPerOrder} tickets per order`);
+    if (input.quantity <= 0) {
+      throw new Error("Quantity must be at least 1");
     }
 
-    // 2. Count existing sold tickets (CONFIRMED bookings)
-    const soldCount = await tx.bookingItem.aggregate({
+    if (input.quantity > ticketType.maxPerOrder) {
+      throw new Error(`Maximum ${ticketType.maxPerOrder} tickets allowed per booking`);
+    }
+
+    // 2. Atomic capacity check
+    const soldAggregate = await tx.bookingItem.aggregate({
       where: {
-        ticketTypeId: params.ticketTypeId,
+        ticketTypeId: input.ticketTypeId,
         booking: { status: BookingStatus.CONFIRMED },
       },
       _sum: { quantity: true },
     });
 
-    const currentSold = soldCount._sum.quantity || 0;
+    const currentSold = soldAggregate._sum.quantity || 0;
     const available = ticketType.capacity - currentSold;
 
-    if (available < params.quantity) {
+    if (available < input.quantity) {
       if (available <= 0) {
         throw new Error("SOLD_OUT");
       }
       throw new Error(`Only ${available} tickets remaining`);
     }
 
-    // 3. Calculate subtotal & grandTotal in paise
-    const subtotal = ticketType.price * params.quantity;
+    // 3. Server-side price calculation (NEVER trust frontend price)
+    const unitPrice = ticketType.price;
+    const subtotal = unitPrice * input.quantity;
     const platformFee = 0;
     const grandTotal = subtotal + platformFee;
 
-    // 4. Generate unique booking reference
+    // 4. Generate unique reference code
     let bookingRef = generateBookingRef();
+    let collisionCheck = await tx.booking.findUnique({ where: { bookingRef } });
     let attempts = 0;
-    while (attempts < 5) {
-      const existing = await tx.booking.findUnique({
-        where: { bookingRef },
-      });
-      if (!existing) break;
+    while (collisionCheck && attempts < 5) {
       bookingRef = generateBookingRef();
+      collisionCheck = await tx.booking.findUnique({ where: { bookingRef } });
       attempts++;
     }
 
-    // 5. Create booking record
+    // 5. Link or create customer record
+    let customer = await tx.customer.findFirst({
+      where: {
+        OR: [
+          { phone: input.customerPhone },
+          { email: input.customerEmail.toLowerCase().trim() },
+        ],
+      },
+    });
+
+    if (!customer) {
+      customer = await tx.customer.create({
+        data: {
+          name: input.customerName.trim(),
+          email: input.customerEmail.toLowerCase().trim(),
+          phone: input.customerPhone.trim(),
+        },
+      });
+    }
+
+    // 6. Create Booking in PENDING state
+    const paymentMode = isDemoPaymentAllowed() ? "demo" : "razorpay";
+
     const booking = await tx.booking.create({
       data: {
         bookingRef,
-        eventId: params.eventId,
-        customerName: params.customerName,
-        customerEmail: params.customerEmail,
-        customerPhone: params.customerPhone,
-        customerCity: params.customerCity,
+        eventId: ticketType.eventId,
+        customerId: customer.id,
+        customerName: input.customerName.trim(),
+        customerEmail: input.customerEmail.toLowerCase().trim(),
+        customerPhone: input.customerPhone.trim(),
+        customerCity: input.customerCity?.trim(),
         totalAmount: subtotal,
         platformFee,
         grandTotal,
         status: BookingStatus.PENDING,
         paymentStatus: PaymentStatus.PENDING,
-        paymentMode: isDemoMode() ? "demo" : "razorpay",
+        paymentMode,
+        ipAddress: input.ipAddress,
+        userAgent: input.userAgent,
+        whatsappOptIn: Boolean(input.whatsappOptIn),
         bookingItems: {
           create: {
-            ticketTypeId: params.ticketTypeId,
-            quantity: params.quantity,
-            unitPrice: ticketType.price,
+            ticketTypeId: ticketType.id,
+            quantity: input.quantity,
+            unitPrice,
             subtotal,
-            attendeeNames: params.attendeeNames
-              ? { names: params.attendeeNames }
+            attendeeNames: input.attendeeNames
+              ? { names: input.attendeeNames }
               : undefined,
           },
         },
       },
     });
 
-    // 6. Create pending payment record
+    // 7. Create Payment record in PENDING state
     await tx.payment.create({
       data: {
         bookingId: booking.id,
         amount: grandTotal,
-        paymentMode: isDemoMode() ? "demo" : "razorpay",
+        currency: "INR",
+        paymentMode,
         status: PaymentStatus.PENDING,
       },
     });
@@ -266,96 +346,185 @@ export async function createBooking(
       bookingId: booking.id,
       bookingRef: booking.bookingRef,
       totalInPaise: grandTotal,
+      ticketTypeName: ticketType.name,
+      unitPrice,
     };
   });
 }
 
 // ============================================================
-// CONFIRM BOOKING
+// TRANSACTIONAL & IDEMPOTENT BOOKING CONFIRMATION
 // ============================================================
 
-export async function confirmBooking(params: {
+export interface ConfirmBookingParams {
   bookingId: string;
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
   razorpaySignature?: string;
   isDemoPayment?: boolean;
-}): Promise<{ success: boolean; tickets: string[] }> {
+  webhookVerified?: boolean;
+}
+
+export interface ConfirmBookingResult {
+  success: boolean;
+  bookingId: string;
+  bookingRef: string;
+  tickets: string[];
+  alreadyConfirmed?: boolean;
+}
+
+/**
+ * Idempotently confirms a booking after payment verification.
+ * Guarantees:
+ * - If already CONFIRMED: returns existing tickets without creating duplicates.
+ * - If PENDING: transitions booking to CONFIRMED, payment to PAID.
+ * - Issues cryptographically unique tickets exactly once.
+ */
+export async function confirmBooking(
+  params: ConfirmBookingParams
+): Promise<ConfirmBookingResult> {
   return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const booking = await tx.booking.findUnique({
       where: { id: params.bookingId },
       include: {
         payment: true,
         bookingItems: { include: { ticketType: true } },
-        event: true,
+        tickets: true,
       },
     });
 
-    if (!booking) throw new Error("Booking not found");
-    if (booking.status === BookingStatus.CONFIRMED) {
-      const tickets = await tx.ticket.findMany({
-        where: { bookingId: booking.id },
-      });
-      return { success: true, tickets: tickets.map((t: { token: string }) => t.token) };
+    if (!booking) {
+      throw new Error(`Booking not found: ${params.bookingId}`);
     }
+
+    // IDEMPOTENCY CHECK: If already confirmed, return existing tickets safely
+    if (booking.status === BookingStatus.CONFIRMED && booking.paymentStatus === PaymentStatus.PAID) {
+      const existingTokens = booking.tickets.map((t: { token: string }) => t.token);
+      return {
+        success: true,
+        bookingId: booking.id,
+        bookingRef: booking.bookingRef,
+        tickets: existingTokens,
+        alreadyConfirmed: true,
+      };
+    }
+
+    // State machine check
     if (booking.status !== BookingStatus.PENDING) {
       throw new Error(`Cannot confirm booking in status: ${booking.status}`);
     }
 
-    // Update booking status to CONFIRMED and paymentStatus to PAID
+    // Update Booking to CONFIRMED
+    const confirmedAt = new Date();
     await tx.booking.update({
       where: { id: booking.id },
       data: {
         status: BookingStatus.CONFIRMED,
         paymentStatus: PaymentStatus.PAID,
-        razorpayOrderId: params.razorpayOrderId,
-        razorpayPaymentId: params.razorpayPaymentId,
-        razorpaySignature: params.razorpaySignature,
-        confirmedAt: new Date(),
+        razorpayOrderId: params.razorpayOrderId || booking.razorpayOrderId,
+        razorpayPaymentId: params.razorpayPaymentId || booking.razorpayPaymentId,
+        razorpaySignature: params.razorpaySignature || booking.razorpaySignature,
+        confirmedAt,
       },
     });
 
-    // Update payment record
+    // Update Payment record to PAID
     await tx.payment.update({
       where: { bookingId: booking.id },
       data: {
         status: PaymentStatus.PAID,
-        razorpayOrderId: params.razorpayOrderId,
+        razorpayOrderId: params.razorpayOrderId || booking.payment?.razorpayOrderId,
         razorpayPaymentId: params.razorpayPaymentId,
         razorpaySignature: params.razorpaySignature,
-        webhookVerified: !params.isDemoPayment,
+        webhookVerified: Boolean(params.webhookVerified),
       },
     });
 
-    // Generate tickets (one ticket token per quantity or item)
-    const ticketTokens: string[] = [];
+    // Issue Tickets exactly once
+    const issuedTokens: string[] = [];
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
     for (const item of booking.bookingItems) {
       for (let i = 0; i < item.quantity; i++) {
         const token = generateTicketToken();
-        const verifyUrl = `${baseUrl}/verify/${token}`;
+        const qrData = `${baseUrl}/verify/${token}`;
 
         await tx.ticket.create({
           data: {
             bookingId: booking.id,
             token,
-            qrData: verifyUrl,
+            qrData,
             isValid: true,
             checkedIn: false,
           },
         });
 
-        ticketTokens.push(token);
+        issuedTokens.push(token);
       }
     }
 
-    return { success: true, tickets: ticketTokens };
+    return {
+      success: true,
+      bookingId: booking.id,
+      bookingRef: booking.bookingRef,
+      tickets: issuedTokens,
+    };
+  });
+}
+
+/**
+ * Confirms a booking in development demo mode.
+ * STRICT SECURITY: Rejects immediately in production.
+ */
+export async function confirmDemoPayment(bookingId: string): Promise<ConfirmBookingResult> {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("FORBIDDEN: Demo payments are strictly disabled in production.");
+  }
+
+  if (process.env.PAYMENT_MODE !== "demo" && process.env.PAYMENT_MODE !== undefined) {
+    throw new Error("FORBIDDEN: Payment mode is not set to demo.");
+  }
+
+  return await confirmBooking({
+    bookingId,
+    isDemoPayment: true,
+    webhookVerified: false,
+  });
+}
+
+/**
+ * Fails/Cancels a pending booking and its payment.
+ */
+export async function failBooking(bookingId: string, reason?: string): Promise<void> {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const booking = await tx.booking.findUnique({
+      where: { id: bookingId },
+    });
+
+    if (!booking || booking.status !== BookingStatus.PENDING) {
+      return;
+    }
+
+    await tx.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: BookingStatus.CANCELLED,
+        paymentStatus: PaymentStatus.FAILED,
+      },
+    });
+
+    await tx.payment.update({
+      where: { bookingId },
+      data: {
+        status: PaymentStatus.FAILED,
+        failureReason: reason || "Payment failed or cancelled",
+      },
+    });
   });
 }
 
 // ============================================================
-// TICKET VERIFICATION (QR Scanner)
+// QR SCANNER / TICKET GATE VERIFICATION
 // ============================================================
 
 export interface VerifyTicketResult {
@@ -371,13 +540,20 @@ export interface VerifyTicketResult {
   };
 }
 
+/**
+ * Verifies a ticket by QR token and atomically checks in the attendee.
+ * Prevents multiple entries on the same ticket.
+ */
 export async function verifyAndCheckInTicket(
   token: string,
   adminId?: string
 ): Promise<VerifyTicketResult> {
+  // Strip verification URL if full URL is scanned
+  const cleanToken = token.includes("/verify/") ? token.split("/verify/").pop() || token : token;
+
   return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const ticket = await tx.ticket.findUnique({
-      where: { token },
+      where: { token: cleanToken },
       include: {
         booking: {
           include: {
@@ -388,20 +564,28 @@ export async function verifyAndCheckInTicket(
     });
 
     if (!ticket) {
+      if (adminId) {
+        await tx.auditLog.create({
+          data: {
+            adminId,
+            action: "SCAN_INVALID",
+            details: { rawToken: cleanToken },
+          },
+        });
+      }
       return {
         valid: false,
         status: "NOT_FOUND",
-        message: "Ticket not found. Invalid QR code.",
+        message: "Invalid ticket QR code. Ticket not found.",
       };
     }
 
     const booking = ticket.booking;
     const ticketItem = booking.bookingItems[0];
-
     const baseInfo = {
       bookingRef: booking.bookingRef,
       customerName: booking.customerName,
-      ticketType: ticketItem?.ticketType.name || "Unknown",
+      ticketType: ticketItem?.ticketType?.name || "Pass",
       quantity: ticketItem?.quantity || 1,
     };
 
@@ -411,7 +595,7 @@ export async function verifyAndCheckInTicket(
           ticketId: ticket.id,
           adminId: adminId || null,
           result: "CANCELLED",
-          deviceInfo: `Booking status: ${booking.status}`,
+          deviceInfo: `Booking Status: ${booking.status}`,
         },
       });
       return {
@@ -433,8 +617,11 @@ export async function verifyAndCheckInTicket(
       return {
         valid: false,
         status: "ALREADY_USED",
-        message: "This ticket has already been used for entry.",
-        ticketInfo: { ...baseInfo, checkedInAt: ticket.checkedInAt || undefined },
+        message: "This ticket has already been checked in.",
+        ticketInfo: {
+          ...baseInfo,
+          checkedInAt: ticket.checkedInAt || undefined,
+        },
       };
     }
 
@@ -449,12 +636,12 @@ export async function verifyAndCheckInTicket(
       return {
         valid: false,
         status: "CANCELLED",
-        message: "This ticket is not valid for entry.",
+        message: "This ticket has been marked invalid.",
         ticketInfo: baseInfo,
       };
     }
 
-    // SUCCESS — mark as checkedIn
+    // Atomic Check-In
     const checkedInAt = new Date();
     await tx.ticket.update({
       where: { id: ticket.id },
@@ -475,8 +662,11 @@ export async function verifyAndCheckInTicket(
     return {
       valid: true,
       status: "SUCCESS",
-      message: "Entry allowed!",
-      ticketInfo: { ...baseInfo, checkedInAt },
+      message: "Valid ticket! Entry allowed.",
+      ticketInfo: {
+        ...baseInfo,
+        checkedInAt,
+      },
     };
   });
 }

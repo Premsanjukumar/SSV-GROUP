@@ -1,98 +1,129 @@
 import { NextRequest, NextResponse } from "next/server";
+import { prisma, BookingStatus, PaymentStatus } from "@/lib/prisma";
 import { verifyRazorpaySignature, confirmBooking } from "@/services/payment";
-import { sendBookingConfirmation } from "@/services/email";
-import { buildVerifyUrl } from "@/lib/utils";
+import { afterPayment } from "@/services/postConfirm";
 import { PaymentVerifySchema } from "@/validators";
-import { prisma, BookingStatus } from "@/lib/prisma";
+import { getClientIp, checkRateLimit } from "@/lib/utils";
+
+// ============================================================
+// POST /api/payment/verify
+// Authoritative payment verification endpoint.
+// Validates signature, order ID, DB amount, and confirms booking.
+// ============================================================
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req.headers);
+
+  // Rate limit: 30 verifications per 10 minutes per IP
+  if (!checkRateLimit(`verify-payment:${ip}`, 30, 10 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Too many verification requests. Please try again later." },
+      { status: 429 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid JSON request body" },
+      { status: 400 }
+    );
   }
 
-  const result = PaymentVerifySchema.safeParse(body);
-  if (!result.success) {
-    return NextResponse.json({ error: "Invalid payment data" }, { status: 400 });
+  const parseResult = PaymentVerifySchema.safeParse(body);
+  if (!parseResult.success) {
+    const issue = parseResult.error.errors[0]?.message || "Invalid payment payload";
+    return NextResponse.json({ error: issue }, { status: 400 });
   }
 
   const { bookingId, razorpayOrderId, razorpayPaymentId, razorpaySignature } =
-    result.data;
+    parseResult.data;
 
-  // CRITICAL: Verify Razorpay signature server-side
-  const isValid = verifyRazorpaySignature({
+  // 1. TIMING-SAFE HMAC SIGNATURE VERIFICATION
+  const isSignatureValid = verifyRazorpaySignature({
     orderId: razorpayOrderId,
     paymentId: razorpayPaymentId,
     signature: razorpaySignature,
   });
 
-  if (!isValid) {
-    console.error("[VERIFY] Invalid Razorpay signature for booking:", bookingId);
+  if (!isSignatureValid) {
+    console.error(`[PAYMENT_TAMPER_DETECTED] Invalid signature for booking ${bookingId}`);
     return NextResponse.json(
-      { error: "Payment verification failed. Invalid signature." },
-      { status: 400 }
-    );
-  }
-
-  // Verify the order ID matches our database record
-  const payment = await prisma.payment.findUnique({
-    where: { bookingId },
-  });
-
-  if (!payment || payment.razorpayOrderId !== razorpayOrderId) {
-    console.error("[VERIFY] Order ID mismatch for booking:", bookingId);
-    return NextResponse.json(
-      { error: "Payment verification failed. Order mismatch." },
+      { error: "Payment verification failed. Invalid cryptographic signature." },
       { status: 400 }
     );
   }
 
   try {
-    const { success, tickets } = await confirmBooking({
-      bookingId,
+    // 2. DATABASE RECORD VALIDATION
+    const booking = await prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { payment: true },
+    });
+
+    if (!booking) {
+      return NextResponse.json(
+        { error: "Booking record not found." },
+        { status: 404 }
+      );
+    }
+
+    // IDEMPOTENCY CHECK: If already confirmed, return success immediately
+    if (booking.status === BookingStatus.CONFIRMED && booking.paymentStatus === PaymentStatus.PAID) {
+      return NextResponse.json({
+        success: true,
+        bookingId: booking.id,
+        alreadyConfirmed: true,
+      });
+    }
+
+    // Ensure order ID matches our database record
+    if (
+      (booking.razorpayOrderId && booking.razorpayOrderId !== razorpayOrderId) ||
+      (booking.payment?.razorpayOrderId && booking.payment.razorpayOrderId !== razorpayOrderId)
+    ) {
+      console.error(
+        `[ORDER_MISMATCH] Expected ${booking.razorpayOrderId || booking.payment?.razorpayOrderId}, got ${razorpayOrderId}`
+      );
+      return NextResponse.json(
+        { error: "Payment order mismatch. Verification failed." },
+        { status: 400 }
+      );
+    }
+
+    // 3. CONFIRM BOOKING & ISSUE TICKETS (TRANSACTIONAL & IDEMPOTENT)
+    const confirmation = await confirmBooking({
+      bookingId: booking.id,
       razorpayOrderId,
       razorpayPaymentId,
       razorpaySignature,
       isDemoPayment: false,
+      webhookVerified: false,
     });
 
-    if (!success) throw new Error("Booking confirmation failed");
-
-    // Send confirmation email (non-blocking)
-    const booking = await prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: { bookingItems: { include: { ticketType: true } } },
-    });
-
-    if (booking) {
-      const item = booking.bookingItems[0];
-      const firstToken = tickets[0];
-      const ticketUrl = firstToken
-        ? buildVerifyUrl(firstToken)
-        : `${process.env.NEXT_PUBLIC_APP_URL}/ticket/${bookingId}`;
-
-      sendBookingConfirmation({
-        customerName: booking.customerName,
-        customerEmail: booking.customerEmail,
-        bookingRef: booking.bookingRef,
-        ticketType: item?.ticketType.name || "Unknown",
-        quantity: item?.quantity || 1,
-        totalInPaise: booking.grandTotal,
-        eventDate: "14 October 2026, Wednesday",
-        eventTime: "5:00 PM Onwards",
-        venue: "Beside Beladale Petrol Pump, Gumpa, Bidar",
-        ticketUrl,
-      }).catch((err) => {
-        console.warn("[EMAIL] Non-critical send failure:", err.message);
-      });
+    if (!confirmation.success) {
+      throw new Error("Failed to confirm booking record in database.");
     }
 
-    return NextResponse.json({ success: true });
+    // 4. DECOUPLED POST-PAYMENT PROCESSING (EMAIL, SMS, WHATSAPP)
+    // Runs in background: failures do not block or fail the customer confirmation
+    afterPayment(booking.id).catch((err) => {
+      console.error("[postConfirm Async Failure]", err?.message || err);
+    });
+
+    return NextResponse.json({
+      success: true,
+      bookingId: booking.id,
+    });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Verification error";
-    console.error("[VERIFY]", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const errorMsg = error instanceof Error ? error.message : "Verification error";
+    console.error("[VERIFY_ERROR]", errorMsg);
+
+    return NextResponse.json(
+      { error: "An error occurred while confirming your booking. Please contact support." },
+      { status: 500 }
+    );
   }
 }
