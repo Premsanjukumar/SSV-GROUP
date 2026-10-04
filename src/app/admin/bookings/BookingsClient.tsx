@@ -152,18 +152,24 @@ export default function BookingsClient() {
             onChange={(e) => { setQ(e.target.value); setPage(1); }}
           />
         </div>
-        <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}
-          className="form-input text-sm py-2.5 w-auto">
-          <option value="">All Statuses</option>
+        <select
+          value={status}
+          onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+          className="form-input text-sm py-2.5 w-auto bg-[#1a0505] text-[#FFF8DC] border border-amber-500/30 cursor-pointer"
+        >
+          <option value="" className="bg-[#1a0505] text-[#FFF8DC]">All Statuses</option>
           {["PAID", "PENDING", "FAILED", "CANCELLED", "REFUNDED"].map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s} className="bg-[#1a0505] text-[#FFF8DC]">{s}</option>
           ))}
         </select>
-        <select value={checkedIn} onChange={(e) => { setCheckedIn(e.target.value); setPage(1); }}
-          className="form-input text-sm py-2.5 w-auto">
-          <option value="">All Entry Status</option>
-          <option value="true">Checked In</option>
-          <option value="false">Not Checked In</option>
+        <select
+          value={checkedIn}
+          onChange={(e) => { setCheckedIn(e.target.value); setPage(1); }}
+          className="form-input text-sm py-2.5 w-auto bg-[#1a0505] text-[#FFF8DC] border border-amber-500/30 cursor-pointer"
+        >
+          <option value="" className="bg-[#1a0505] text-[#FFF8DC]">All Entry Status</option>
+          <option value="true" className="bg-[#1a0505] text-[#FFF8DC]">Checked In</option>
+          <option value="false" className="bg-[#1a0505] text-[#FFF8DC]">Not Checked In</option>
         </select>
       </div>
 

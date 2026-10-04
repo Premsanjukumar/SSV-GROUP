@@ -299,23 +299,23 @@ export default function CouponsClient() {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="form-input text-xs py-2 bg-stone-900 border-amber-500/20 text-amber-100"
+            className="form-input text-xs py-2 bg-[#1a0505] border-amber-500/20 text-[#FFF8DC] cursor-pointer"
           >
-            <option value="">All Benefit Types</option>
-            <option value="SHOPPING_BENEFIT_200">₹200 Shopping Benefit</option>
-            <option value="RAMP_WALK_WINNER_5000">🏆 ₹5,000 Ramp Walk Winner</option>
+            <option value="" className="bg-[#1a0505] text-[#FFF8DC]">All Benefit Types</option>
+            <option value="SHOPPING_BENEFIT_200" className="bg-[#1a0505] text-[#FFF8DC]">₹200 Shopping Benefit</option>
+            <option value="RAMP_WALK_WINNER_5000" className="bg-[#1a0505] text-[#FFF8DC]">🏆 ₹5,000 Ramp Walk Winner</option>
           </select>
 
           {/* Status Filter */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="form-input text-xs py-2 bg-stone-900 border-amber-500/20 text-amber-100"
+            className="form-input text-xs py-2 bg-[#1a0505] border-amber-500/20 text-[#FFF8DC] cursor-pointer"
           >
-            <option value="">All Statuses</option>
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="REDEEMED">REDEEMED</option>
-            <option value="EXPIRED">EXPIRED</option>
+            <option value="" className="bg-[#1a0505] text-[#FFF8DC]">All Statuses</option>
+            <option value="ACTIVE" className="bg-[#1a0505] text-[#FFF8DC]">ACTIVE</option>
+            <option value="REDEEMED" className="bg-[#1a0505] text-[#FFF8DC]">REDEEMED</option>
+            <option value="EXPIRED" className="bg-[#1a0505] text-[#FFF8DC]">EXPIRED</option>
           </select>
 
           <button

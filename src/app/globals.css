@@ -9,6 +9,7 @@
 
 @layer base {
   :root {
+    color-scheme: dark;
     --color-maroon: #6D0B0B;
     --color-deep-red: #8B0000;
     --color-festive-red: #C0392B;
@@ -31,6 +32,7 @@
   }
 
   html {
+    color-scheme: dark;
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
   }
@@ -120,12 +122,34 @@
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(212, 160, 23, 0.2);
     color: #FFF8DC;
+    color-scheme: dark;
   }
 
   .form-input:focus {
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(212, 160, 23, 0.5);
     box-shadow: 0 0 0 3px rgba(212, 160, 23, 0.1);
+  }
+
+  select,
+  select.form-input {
+    color-scheme: dark;
+    background-color: #1a0505;
+    color: #FFF8DC;
+  }
+
+  select option,
+  .form-input option,
+  option {
+    background-color: #1a0505 !important;
+    color: #FFF8DC !important;
+  }
+
+  select option:hover,
+  select option:focus,
+  select option:checked {
+    background-color: #3b0d0d !important;
+    color: #F5C842 !important;
   }
 
   .form-label {
