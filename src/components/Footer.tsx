@@ -186,16 +186,29 @@ export default function Footer() {
 
         {/* Bottom bar */}
         <div
-          className="border-t mt-12 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs"
+          className="border-t mt-12 pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-xs"
           style={{
             borderColor: "rgba(212,160,23,0.1)",
-            color: "rgba(255,248,220,0.35)",
+            color: "rgba(255,248,220,0.45)",
           }}
         >
           <div>
             © 2026 <strong className="text-amber-300">SSV GROUP</strong>. All rights reserved.
           </div>
-          <div className="text-center sm:text-right">
+
+          <div className="text-center flex items-center justify-center gap-1.5">
+            <span>Website Created by</span>
+            <a
+              href="https://instagram.com/premchari_pavan"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-amber-400 hover:text-amber-300 font-semibold tracking-wide transition-colors inline-flex items-center gap-1"
+            >
+              @premchari_pavan
+            </a>
+          </div>
+
+          <div className="text-center md:text-right text-cream/40">
             Dandiya Night 2026 — RS Open Ground, Bidar
           </div>
         </div>

@@ -47,10 +47,20 @@ export async function POST(req: NextRequest) {
 
   // Single Pass / Women Only confirmation check
   try {
-    const tt = await prisma.ticketType.findUnique({
+    let tt = await prisma.ticketType.findUnique({
       where: { id: data.ticketTypeId },
       select: { womenOnly: true, name: true },
     });
+
+    if (!tt && (data.ticketTypeId.includes("single") || data.ticketTypeId.includes("couple"))) {
+      tt = await prisma.ticketType.findFirst({
+        where: {
+          name: { contains: data.ticketTypeId.includes("single") ? "Single" : "Couple", mode: "insensitive" },
+          isActive: true,
+        },
+        select: { womenOnly: true, name: true },
+      });
+    }
 
     const isWomenOnly = tt?.womenOnly || tt?.name.toLowerCase().includes("single") || data.ticketTypeId.toLowerCase().includes("single");
     if (isWomenOnly && !data.femaleConfirmation) {
@@ -94,7 +104,9 @@ export async function POST(req: NextRequest) {
       errorMsg.includes("closed") ||
       errorMsg.includes("Maximum") ||
       errorMsg.includes("Coupon") ||
-      errorMsg.includes("coupon")
+      errorMsg.includes("coupon") ||
+      errorMsg.includes("Ticket type") ||
+      errorMsg.includes("Ticket sales")
     ) {
       return NextResponse.json(
         { error: errorMsg === "SOLD_OUT" ? "Sorry, this ticket tier is currently sold out." : errorMsg },

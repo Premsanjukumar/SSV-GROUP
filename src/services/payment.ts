@@ -216,10 +216,25 @@ export async function createBooking(
 ): Promise<CreateBookingOutput> {
   return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     // 1. Fetch ticket type and event from database
-    const ticketType = await tx.ticketType.findUnique({
+    let ticketType = await tx.ticketType.findUnique({
       where: { id: input.ticketTypeId },
       include: { event: true },
     });
+
+    // Resilient lookup if client submitted a fallback slug (e.g., couple-pass-default or single-pass-default)
+    if (!ticketType) {
+      const isSingle = input.ticketTypeId.toLowerCase().includes("single");
+      const isCouple = input.ticketTypeId.toLowerCase().includes("couple");
+      if (isSingle || isCouple) {
+        ticketType = await tx.ticketType.findFirst({
+          where: {
+            name: { contains: isSingle ? "Single" : "Couple", mode: "insensitive" },
+            isActive: true,
+          },
+          include: { event: true },
+        });
+      }
+    }
 
     if (!ticketType) {
       throw new Error("Ticket type not found");
@@ -614,7 +629,7 @@ export async function verifyAndCheckInTicket(
   // Strip verification URL if full URL is scanned
   const cleanToken = token.includes("/verify/") ? token.split("/verify/").pop() || token : token;
 
-  return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  return await prisma.$transaction(async (tx: Prisma.TransactionClient): Promise<VerifyTicketResult> => {
     const ticket = await tx.ticket.findUnique({
       where: { token: cleanToken },
       include: {

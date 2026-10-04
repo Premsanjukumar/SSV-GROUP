@@ -22,17 +22,17 @@ export default function AdminLoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setError(data.error || "Login failed");
+        setError(data?.error || `Login failed (${res.status}). Please check server configuration.`);
         return;
       }
 
       router.push("/admin");
       router.refresh();
-    } catch {
-      setError("Network error. Please try again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error. Please try again.");
     } finally {
       setLoading(false);
     }

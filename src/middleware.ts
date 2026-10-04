@@ -22,7 +22,7 @@ export async function middleware(req: NextRequest) {
   }
 
   const token = req.cookies.get(AUTH_COOKIE)?.value;
-  const secret = process.env.AUTH_SECRET;
+  const secret = process.env.AUTH_SECRET || "ssv-dandiya-divas-2026-auth-secret-key-prod";
 
   if (token && secret) {
     try {
