@@ -263,7 +263,7 @@ export async function createBooking(
     // 2. Atomic capacity check
     const soldAggregate = await tx.bookingItem.aggregate({
       where: {
-        ticketTypeId: input.ticketTypeId,
+        ticketTypeId: ticketType.id,
         booking: { status: BookingStatus.CONFIRMED },
       },
       _sum: { quantity: true },

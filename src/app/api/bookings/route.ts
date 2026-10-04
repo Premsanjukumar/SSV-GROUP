@@ -11,6 +11,14 @@ import { getClientIp, checkRateLimit, sanitizePhone } from "@/lib/utils";
 // ============================================================
 
 export async function POST(req: NextRequest) {
+  if (!process.env.DATABASE_URL) {
+    console.error("[CRITICAL_CONFIG_ERROR] DATABASE_URL is not set in environment variables!");
+    return NextResponse.json(
+      { error: "Database not configured. Please add DATABASE_URL to your Vercel Project Settings -> Environment Variables." },
+      { status: 500 }
+    );
+  }
+
   const ip = getClientIp(req.headers);
 
   // Rate limiting: 10 booking initiations per 10 minutes per IP
@@ -116,8 +124,21 @@ export async function POST(req: NextRequest) {
 
     console.error("[BOOKING_CREATION_FAILED]", errorMsg);
 
+    if (
+      errorMsg.includes("database") ||
+      errorMsg.includes("DATABASE_URL") ||
+      errorMsg.includes("Can't reach database") ||
+      errorMsg.includes("P1001") ||
+      errorMsg.includes("P2024")
+    ) {
+      return NextResponse.json(
+        { error: "Database connection failed. Please ensure DATABASE_URL is added in Vercel Project Settings -> Environment Variables." },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
-      { error: "Unable to create booking. Please try again or contact support." },
+      { error: `Unable to create booking: ${errorMsg}` },
       { status: 500 }
     );
   }
