@@ -1,7 +1,9 @@
 import crypto from "crypto";
 import { Prisma } from "@prisma/client";
-import { prisma, BookingStatus, PaymentStatus } from "@/lib/prisma";
+import { prisma, BookingStatus, PaymentStatus, CouponType, CouponStatus } from "@/lib/prisma";
 import { generateTicketToken, generateBookingRef } from "@/lib/utils";
+import { validateCoupon } from "@/services/coupon";
+import { generateCouponCode } from "@/services/digitalCoupon";
 
 // ============================================================
 // CANONICAL PAYMENT & BOOKING SERVICE
@@ -193,6 +195,8 @@ export interface CreateBookingInput {
   ipAddress?: string;
   userAgent?: string;
   whatsappOptIn?: boolean;
+  shoppingBenefitOptIn?: boolean;
+  couponCode?: string;
 }
 
 export interface CreateBookingOutput {
@@ -264,7 +268,29 @@ export async function createBooking(
     const unitPrice = ticketType.price;
     const subtotal = unitPrice * input.quantity;
     const platformFee = 0;
-    const grandTotal = subtotal + platformFee;
+
+    let discountInPaise = 0;
+    let couponNote: string | undefined = undefined;
+
+    if (input.couponCode) {
+      const couponValidation = validateCoupon({
+        couponCode: input.couponCode,
+        ticketTypeId: ticketType.id,
+        ticketTypeName: ticketType.name,
+        ticketPriceInPaise: unitPrice,
+        quantity: input.quantity,
+        isFemaleOnly: ticketType.womenOnly,
+      });
+
+      if (!couponValidation.isValid) {
+        throw new Error(couponValidation.error || "Invalid coupon code");
+      }
+
+      discountInPaise = couponValidation.discountInPaise;
+      couponNote = `COUPON:${couponValidation.code}:DISCOUNT_${couponValidation.discountInPaise}`;
+    }
+
+    const grandTotal = Math.max(0, subtotal - discountInPaise + platformFee);
 
     // 4. Generate unique reference code
     let bookingRef = generateBookingRef();
@@ -308,6 +334,7 @@ export async function createBooking(
         customerEmail: input.customerEmail.toLowerCase().trim(),
         customerPhone: input.customerPhone.trim(),
         customerCity: input.customerCity?.trim(),
+        notes: couponNote,
         totalAmount: subtotal,
         platformFee,
         grandTotal,
@@ -317,6 +344,7 @@ export async function createBooking(
         ipAddress: input.ipAddress,
         userAgent: input.userAgent,
         whatsappOptIn: Boolean(input.whatsappOptIn),
+        shoppingBenefitOptIn: input.shoppingBenefitOptIn !== false,
         bookingItems: {
           create: {
             ticketTypeId: ticketType.id,
@@ -370,6 +398,7 @@ export interface ConfirmBookingResult {
   bookingId: string;
   bookingRef: string;
   tickets: string[];
+  couponCode?: string | null;
   alreadyConfirmed?: boolean;
 }
 
@@ -379,6 +408,7 @@ export interface ConfirmBookingResult {
  * - If already CONFIRMED: returns existing tickets without creating duplicates.
  * - If PENDING: transitions booking to CONFIRMED, payment to PAID.
  * - Issues cryptographically unique tickets exactly once.
+ * - Generates ₹200 Foreign Fits coupon if customer opted in (shoppingBenefitOptIn: true).
  */
 export async function confirmBooking(
   params: ConfirmBookingParams
@@ -400,11 +430,15 @@ export async function confirmBooking(
     // IDEMPOTENCY CHECK: If already confirmed, return existing tickets safely
     if (booking.status === BookingStatus.CONFIRMED && booking.paymentStatus === PaymentStatus.PAID) {
       const existingTokens = booking.tickets.map((t: { token: string }) => t.token);
+      const existingCoupon = await tx.coupon.findFirst({
+        where: { bookingId: booking.id, type: CouponType.SHOPPING_BENEFIT_200 },
+      });
       return {
         success: true,
         bookingId: booking.id,
         bookingRef: booking.bookingRef,
         tickets: existingTokens,
+        couponCode: existingCoupon?.code || null,
         alreadyConfirmed: true,
       };
     }
@@ -463,11 +497,40 @@ export async function confirmBooking(
       }
     }
 
+    // Issue ₹200 Shopping Benefit coupon ONLY if customer opted in
+    let issuedCouponCode: string | null = null;
+    if (booking.shoppingBenefitOptIn) {
+      let code = generateCouponCode(CouponType.SHOPPING_BENEFIT_200);
+      let collision = await tx.coupon.findUnique({ where: { code } });
+      let attempts = 0;
+      while (collision && attempts < 5) {
+        code = generateCouponCode(CouponType.SHOPPING_BENEFIT_200);
+        collision = await tx.coupon.findUnique({ where: { code } });
+        attempts++;
+      }
+
+      const newCoupon = await tx.coupon.create({
+        data: {
+          code,
+          type: CouponType.SHOPPING_BENEFIT_200,
+          benefitAmount: 200,
+          bookingId: booking.id,
+          customerId: booking.customerId,
+          status: CouponStatus.ACTIVE,
+          issuedAt: new Date(),
+          expiresAt: new Date("2026-10-31T23:59:59.000Z"),
+        },
+      });
+
+      issuedCouponCode = newCoupon.code;
+    }
+
     return {
       success: true,
       bookingId: booking.id,
       bookingRef: booking.bookingRef,
       tickets: issuedTokens,
+      couponCode: issuedCouponCode,
     };
   });
 }

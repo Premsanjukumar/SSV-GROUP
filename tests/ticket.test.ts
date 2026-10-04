@@ -29,10 +29,16 @@ describe("ticket pdf", () => {
 
 describe("email confirmation", () => {
   it("safely handles unconfigured SMTP without crashing", async () => {
+    const origMode = process.env.EMAIL_MODE;
+    const origEnv = process.env.NODE_ENV;
+    process.env.EMAIL_MODE = "live";
+    (process.env as any).NODE_ENV = "production";
     const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = await sendBookingConfirmation(sampleData);
     expect(result.success).toBe(false);
     expect(result.error).toContain("SMTP");
     spy.mockRestore();
+    process.env.EMAIL_MODE = origMode;
+    (process.env as any).NODE_ENV = origEnv;
   });
 });

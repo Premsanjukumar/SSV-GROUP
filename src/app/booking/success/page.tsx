@@ -6,16 +6,26 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 import {
-  CheckCircle, Download, QrCode, MapPin, Calendar, Loader2, Share2,
+  CheckCircle, Download, QrCode, MapPin, Calendar, Loader2, Share2, Gift,
 } from "lucide-react";
+import CouponModal from "@/components/CouponModal";
 
 interface BookingDetails {
   bookingId: string;
   bookingRef: string;
   customerName: string;
+  customerEmail?: string;
+  emailDeliveryStatus?: string;
   ticketType: string;
   quantity: number;
   totalInPaise: number;
+  shoppingBenefitOptIn?: boolean;
+  coupon?: {
+    code: string;
+    benefitAmount: number;
+    status: string;
+    expiresAt?: string;
+  } | null;
   status: string;
   eventDate: string;
   venue: string;
@@ -32,6 +42,7 @@ function SuccessInner() {
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [isCouponModalOpen, setIsCouponModalOpen] = useState(false);
 
   useEffect(() => {
     if (bookingId) fetchBooking(bookingId);
@@ -160,6 +171,70 @@ function SuccessInner() {
                 </div>
               </div>
 
+              {/* Conditional Verified Shopping Benefit Card */}
+              {booking.shoppingBenefitOptIn !== false && booking.coupon ? (
+                <div className="card-festive overflow-hidden mb-6 p-5 sm:p-6 border-2 border-emerald-500/50 bg-gradient-to-b from-emerald-950/40 via-black to-emerald-950/30">
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300">
+                      <Gift size={20} />
+                    </span>
+                    <div>
+                      <span className="text-[10px] uppercase tracking-widest text-emerald-300 font-extrabold">
+                        VERIFIED ATTENDEE PERK
+                      </span>
+                      <h3 className="font-display font-black text-lg sm:text-xl text-white">
+                        🎁 YOUR SHOPPING BENEFIT
+                      </h3>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-black/60 border border-emerald-500/30 my-3">
+                    <div className="text-xs font-bold text-amber-300 uppercase tracking-wider mb-1">
+                      FOREIGN FITS IMPORTED FASHION
+                    </div>
+                    <div className="text-2xl font-black font-display text-emerald-400 mb-1">
+                      ₹200 OFF
+                    </div>
+                    <p className="text-xs text-amber-100/90 leading-relaxed">
+                      Shopping benefit for every person. Your verified digital coupon code has been securely issued!
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsCouponModalOpen(true)}
+                    className="btn-gold w-full justify-center py-3.5 text-sm font-black flex items-center gap-2 shadow-[0_0_20px_rgba(212,160,23,0.3)] active:scale-98"
+                  >
+                    <Gift size={16} /> [ VIEW COUPON ]
+                  </button>
+
+                  <div className="flex items-center gap-2 text-[11px] text-emerald-300 font-medium mt-3">
+                    <CheckCircle size={14} className="text-emerald-400 flex-shrink-0" />
+                    <span>Valid at Foreign Fits imported fashion store</span>
+                  </div>
+                </div>
+              ) : booking.shoppingBenefitOptIn === false ? (
+                <div className="p-3.5 rounded-xl mb-6 bg-stone-900/40 border border-amber-500/20 text-center">
+                  <p className="text-xs text-amber-200/60">
+                    You chose not to receive the Foreign Fits shopping benefit.
+                  </p>
+                </div>
+              ) : null}
+
+              {/* Digital Coupon Modal */}
+              {booking.coupon && (
+                <CouponModal
+                  isOpen={isCouponModalOpen}
+                  onClose={() => setIsCouponModalOpen(false)}
+                  code={booking.coupon.code}
+                  type="SHOPPING_BENEFIT_200"
+                  benefitAmount={booking.coupon.benefitAmount || 200}
+                  status={booking.coupon.status}
+                  bookingRef={booking.bookingRef}
+                  expiresAt={booking.coupon.expiresAt}
+                />
+              )}
+
               {/* Actions */}
               <div className="space-y-3">
                 <Link
@@ -184,13 +259,57 @@ function SuccessInner() {
                 </button>
               </div>
 
-              <div className="mt-8 p-4 rounded-xl" style={{ background: "rgba(45,80,22,0.15)", border: "1px solid rgba(144,238,144,0.2)" }}>
-                <p className="text-sm text-center" style={{ color: "rgba(144,238,144,0.8)" }}>
-                  📱 Booking confirmation email sent! Check your inbox (or spam folder).
-                </p>
-              </div>
+              {/* Email Delivery Status Banner */}
+              {booking.emailDeliveryStatus === "FAILED" ? (
+                <div
+                  className="mt-6 p-4 rounded-xl text-center border"
+                  style={{
+                    background: "rgba(180,83,9,0.15)",
+                    borderColor: "rgba(245,158,11,0.3)",
+                  }}
+                >
+                  <div className="font-extrabold text-sm mb-1" style={{ color: "#90ee90" }}>
+                    ✓ BOOKING CONFIRMED
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: "#FFF8DC" }}>
+                    Your payment was successful and your ticket is ready.
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "rgba(255,248,220,0.65)" }}>
+                    We couldn&apos;t send the email right now.
+                  </p>
+                  <p className="text-xs mt-2" style={{ color: "rgba(212,160,23,0.9)" }}>
+                    You can view your QR ticket online or download the official PDF ticket above.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="mt-6 p-4 rounded-xl text-center border"
+                  style={{
+                    background: "rgba(45,80,22,0.2)",
+                    borderColor: "rgba(144,238,144,0.3)",
+                  }}
+                >
+                  <div className="font-extrabold text-sm mb-1 tracking-wide" style={{ color: "#90ee90" }}>
+                    ✓ BOOKING CONFIRMED
+                  </div>
+                  <p className="text-sm font-bold mb-2" style={{ color: "#90ee90" }}>
+                    🎟️ Your ticket has been generated.
+                  </p>
+                  <div className="py-2 px-3 rounded-lg inline-block max-w-full" style={{ background: "rgba(0,0,0,0.4)" }}>
+                    <div className="text-xs" style={{ color: "rgba(255,248,220,0.7)" }}>
+                      📧 Ticket email sent to:
+                    </div>
+                    <div className="text-sm font-bold font-mono break-all mt-0.5" style={{ color: "#F5C842" }}>
+                      {booking.customerEmail || "your registered email"}
+                    </div>
+                  </div>
+                  <p className="text-[11px] mt-2" style={{ color: "rgba(255,248,220,0.5)" }}>
+                    Please check your inbox (or spam folder) for your attached PDF ticket & entry QR code.
+                  </p>
+                </div>
+              )}
 
-              <div className="mt-4 text-center">
+              <div className="mt-6 text-center">
                 <Link href="/" className="text-sm" style={{ color: "rgba(212,160,23,0.6)" }}>
                   ← Back to Home
                 </Link>

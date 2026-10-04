@@ -519,10 +519,11 @@ export default function AISupportWidget() {
     <>
       {/* ── Floating Button ── */}
       <div
+        className="ssv-ai-support-trigger"
         style={{
           position: "fixed",
-          bottom: "24px",
-          right: "20px",
+          bottom: "calc(18px + env(safe-area-inset-bottom, 0px))",
+          right: "16px",
           zIndex: 9998,
           opacity: isVisible ? 1 : 0,
           transform: isVisible ? "scale(1)" : "scale(0.7)",
@@ -583,11 +584,11 @@ export default function AISupportWidget() {
           ref={panelRef}
           style={{
             position: "fixed",
-            bottom: "76px",
-            right: "20px",
+            bottom: "calc(70px + env(safe-area-inset-bottom, 0px))",
+            right: "16px",
             zIndex: 9999,
             width: "min(360px, calc(100vw - 32px))",
-            maxHeight: "min(540px, calc(100vh - 100px))",
+            maxHeight: "min(520px, calc(100vh - 90px))",
             display: "flex",
             flexDirection: "column",
             borderRadius: "20px",

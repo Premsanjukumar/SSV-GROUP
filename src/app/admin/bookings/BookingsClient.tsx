@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, Download, Loader2, Filter } from "lucide-react";
+import { Search, Download, Loader2, Filter, Mail } from "lucide-react";
 import Link from "next/link";
 
 interface Booking {
@@ -15,6 +15,7 @@ interface Booking {
   totalInPaise: number;
   status: string;
   paymentStatus: string;
+  emailDeliveryStatus?: string;
   isDemoPayment: boolean;
   checkedIn: boolean;
   checkedInAt: string | null;
@@ -38,9 +39,28 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function EmailDeliveryBadge({ status }: { status?: string }) {
+  const normalized = status || "PENDING";
+  const colors: Record<string, { bg: string; color: string; label: string }> = {
+    SENT: { bg: "rgba(39,174,96,0.2)", color: "#90ee90", label: "✓ Sent" },
+    DELIVERED: { bg: "rgba(39,174,96,0.2)", color: "#90ee90", label: "✓ Delivered" },
+    FAILED: { bg: "rgba(235,87,87,0.2)", color: "#ff6b6b", label: "✕ Failed" },
+    QUEUED: { bg: "rgba(242,201,76,0.2)", color: "#ffd700", label: "⏳ Queued" },
+    PENDING: { bg: "rgba(255,255,255,0.1)", color: "#bbb", label: "• Pending" },
+  };
+  const c = colors[normalized] || colors.PENDING;
+  return (
+    <span className="text-[11px] font-semibold px-2 py-0.5 rounded inline-block"
+      style={{ background: c.bg, color: c.color }}>
+      {c.label}
+    </span>
+  );
+}
+
 export default function BookingsClient() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [checkedIn, setCheckedIn] = useState("");
@@ -68,12 +88,34 @@ export default function BookingsClient() {
     return () => clearTimeout(timer);
   }, [fetchBookings]);
 
+  async function handleResendEmail(e: React.MouseEvent, bookingId: string, customerEmail: string) {
+    e.stopPropagation();
+    if (!confirm(`Resend the official ticket PDF email to ${customerEmail}?`)) return;
+    setResendingId(bookingId);
+    try {
+      const res = await fetch(`/api/admin/bookings/${bookingId}/resend-email`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(`✓ Ticket email successfully resent to ${customerEmail}!`);
+        fetchBookings();
+      } else {
+        alert(data.error || data.message || "Failed to resend ticket email.");
+      }
+    } catch {
+      alert("Network error while attempting to resend ticket email.");
+    } finally {
+      setResendingId(null);
+    }
+  }
+
   function exportCSV() {
-    const headers = ["Booking Ref", "Name", "Phone", "Email", "Ticket", "Qty", "Amount", "Status", "Checked In", "Date"];
+    const headers = ["Booking Ref", "Name", "Phone", "Email", "Ticket", "Qty", "Amount", "Status", "Email Status", "Checked In", "Date"];
     const rows = bookings.map((b) => [
       b.bookingRef, b.customerName, b.customerPhone, b.customerEmail,
       b.ticketType, b.quantity, (b.totalInPaise / 100).toFixed(2),
-      b.status, b.checkedIn ? "Yes" : "No",
+      b.status, b.emailDeliveryStatus || "PENDING", b.checkedIn ? "Yes" : "No",
       new Date(b.createdAt).toLocaleDateString("en-IN"),
     ]);
     const csv = [headers, ...rows].map((r) => r.map(String).map((v) => `"${v.replace(/"/g, '""')}"`).join(",")).join("\n");
@@ -136,7 +178,7 @@ export default function BookingsClient() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: "rgba(26,5,5,0.8)" }}>
-                  {["Ref", "Name", "Phone", "Ticket", "Qty", "Amount", "Payment", "Entry", "Date"].map((h) => (
+                  {["Ref", "Name", "Phone", "Ticket", "Qty", "Amount", "Payment", "Email", "Entry", "Action"].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold tracking-widest"
                       style={{ color: "rgba(212,160,23,0.7)" }}>{h}</th>
                   ))}
@@ -144,7 +186,7 @@ export default function BookingsClient() {
               </thead>
               <tbody>
                 {bookings.length === 0 ? (
-                  <tr><td colSpan={9} className="text-center py-12" style={{ color: "rgba(255,248,220,0.3)" }}>
+                  <tr><td colSpan={10} className="text-center py-12" style={{ color: "rgba(255,248,220,0.3)" }}>
                     No bookings found
                   </td></tr>
                 ) : bookings.map((b) => (
@@ -166,12 +208,30 @@ export default function BookingsClient() {
                     <td className="px-4 py-3 text-center" style={{ color: "rgba(255,248,220,0.7)" }}>{b.quantity}</td>
                     <td className="px-4 py-3 font-semibold" style={{ color: "#D4A017" }}>{formatCurrency(b.totalInPaise)}</td>
                     <td className="px-4 py-3"><StatusBadge status={b.paymentStatus} /></td>
+                    <td className="px-4 py-3"><EmailDeliveryBadge status={b.emailDeliveryStatus} /></td>
                     <td className="px-4 py-3 text-xs font-bold"
                       style={{ color: b.checkedIn ? "#90ee90" : "rgba(255,248,220,0.3)" }}>
                       {b.checkedIn ? "✓ In" : "—"}
                     </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: "rgba(255,248,220,0.4)" }}>
-                      {new Date(b.createdAt).toLocaleDateString("en-IN")}
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      {(b.paymentStatus === "PAID" || b.status === "CONFIRMED") ? (
+                        <button
+                          type="button"
+                          onClick={(e) => handleResendEmail(e, b.id, b.customerEmail)}
+                          disabled={resendingId === b.id}
+                          className="btn-outline text-[11px] py-1 px-2.5 flex items-center gap-1.5 whitespace-nowrap hover:border-amber-400 active:scale-95"
+                          title="Resend official ticket email + PDF attachment to customer"
+                        >
+                          {resendingId === b.id ? (
+                            <Loader2 size={12} className="animate-spin text-amber-400" />
+                          ) : (
+                            <Mail size={12} className="text-amber-400" />
+                          )}
+                          <span>Resend Email</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-stone-500">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

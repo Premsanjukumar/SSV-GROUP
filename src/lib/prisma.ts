@@ -35,6 +35,20 @@ export const DeliveryStatus = {
 } as const;
 export type DeliveryStatus = (typeof DeliveryStatus)[keyof typeof DeliveryStatus];
 
+export const CouponType = {
+  SHOPPING_BENEFIT_200: "SHOPPING_BENEFIT_200",
+  RAMP_WALK_WINNER_5000: "RAMP_WALK_WINNER_5000",
+} as const;
+export type CouponType = (typeof CouponType)[keyof typeof CouponType];
+
+export const CouponStatus = {
+  ACTIVE: "ACTIVE",
+  REDEEMED: "REDEEMED",
+  EXPIRED: "EXPIRED",
+  CANCELLED: "CANCELLED",
+} as const;
+export type CouponStatus = (typeof CouponStatus)[keyof typeof CouponStatus];
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
@@ -46,6 +60,10 @@ export const prisma =
       process.env.NODE_ENV === "development"
         ? ["query", "error", "warn"]
         : ["error"],
+    transactionOptions: {
+      timeout: 30000,
+      maxWait: 10000,
+    },
   });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

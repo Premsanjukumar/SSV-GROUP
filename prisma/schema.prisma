@@ -76,6 +76,7 @@ model Customer {
   updatedAt        DateTime          @updatedAt
   bookings         Booking[]
   otpVerifications OtpVerification[]
+  coupons          Coupon[]
 }
 
 model OtpVerification {
@@ -116,6 +117,7 @@ model Booking {
   notes                  String?
   ipAddress              String?
   userAgent              String?
+  shoppingBenefitOptIn   Boolean        @default(true)
   emailDeliveryStatus    DeliveryStatus @default(PENDING)
   emailSentAt            DateTime?
   emailError             String?
@@ -136,6 +138,7 @@ model Booking {
   bookingItems           BookingItem[]
   payment                Payment?
   tickets                Ticket[]
+  coupons                Coupon[]
   auditLogs              AuditLog[]
 }
 
@@ -254,4 +257,41 @@ enum DeliveryStatus {
   SENT
   DELIVERED
   FAILED
+}
+
+model Coupon {
+  id            String        @id @default(cuid())
+  code          String        @unique
+  type          CouponType    @default(SHOPPING_BENEFIT_200)
+  benefitAmount Int           @default(200) // Value in Rupees (200 or 5000)
+  bookingId     String?
+  customerId    String?
+  winnerName    String?
+  notes         String?
+  status        CouponStatus  @default(ACTIVE)
+  issuedAt      DateTime      @default(now())
+  redeemedAt    DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  booking       Booking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  customer      Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([code])
+  @@index([bookingId])
+  @@index([type])
+  @@index([status])
+}
+
+enum CouponType {
+  SHOPPING_BENEFIT_200
+  RAMP_WALK_WINNER_5000
+}
+
+enum CouponStatus {
+  ACTIVE
+  REDEEMED
+  EXPIRED
+  CANCELLED
 }

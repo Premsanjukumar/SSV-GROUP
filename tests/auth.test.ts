@@ -25,3 +25,19 @@ describe("rate limit and ticket tokens", () => {
     expect(deriveTicketToken("t1", SECRET)).not.toBe(deriveTicketToken("t1", "z".repeat(40)));
   });
 });
+
+describe("admin credentials validator", () => {
+  it("normalizes admin email to lowercase and accepts valid password", async () => {
+    const { AdminLoginSchema } = await import("../src/validators");
+    const parsed = AdminLoginSchema.safeParse({
+      email: "Ssvphotography777@gmail.com",
+      password: "Welcome@ssvgroup",
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.email).toBe("ssvphotography777@gmail.com");
+      expect(parsed.data.password).toBe("Welcome@ssvgroup");
+    }
+  });
+});
+

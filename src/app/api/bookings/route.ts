@@ -76,6 +76,8 @@ export async function POST(req: NextRequest) {
       ipAddress: ip,
       userAgent: req.headers.get("user-agent") || undefined,
       whatsappOptIn: Boolean((body as { whatsappOptIn?: boolean })?.whatsappOptIn),
+      shoppingBenefitOptIn: data.shoppingBenefitOptIn !== false,
+      couponCode: data.couponCode,
     });
 
     return NextResponse.json({
@@ -86,7 +88,14 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Booking initiation failed";
 
-    if (errorMsg.includes("SOLD_OUT") || errorMsg.includes("remaining") || errorMsg.includes("closed") || errorMsg.includes("Maximum")) {
+    if (
+      errorMsg.includes("SOLD_OUT") ||
+      errorMsg.includes("remaining") ||
+      errorMsg.includes("closed") ||
+      errorMsg.includes("Maximum") ||
+      errorMsg.includes("Coupon") ||
+      errorMsg.includes("coupon")
+    ) {
       return NextResponse.json(
         { error: errorMsg === "SOLD_OUT" ? "Sorry, this ticket tier is currently sold out." : errorMsg },
         { status: 400 }

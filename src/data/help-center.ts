@@ -142,21 +142,21 @@ export const FAQ_ENTRIES: FaqEntry[] = [
     categoryId: "event",
     question: "When and where is the event?",
     keywords: ["when","where","date","time","location","venue","address","october","bidar","place","ground","rs open"],
-    answer: "🗓️ **Date:** 14 October 2026 (Wednesday)\n⏰ **Time:** 6:00 PM IST onwards\n📍 **Venue:** RS Open Ground, Beside Beldale Petrol Pump, Gumpa, Bidar, Karnataka\n\nAmple 2-wheeler & 4-wheeler parking available at the venue.",
+    answer: "🗓️ **Date:** 14 October 2026 (Wednesday)\n⏰ **Time:** 5:00 PM to 10:00 PM IST\n📍 **Venue:** RS Open Ground, Beside Beldale Petrol Pump, Gumpa, Bidar, Karnataka\n\nAmple 2-wheeler & 4-wheeler parking available at the venue.",
   },
   {
     id: "who-performing",
     categoryId: "event",
     question: "Who is performing?",
     keywords: ["performing","artist","celebrity","performer","sp power","singer","dj","guest","star","show"],
-    answer: "✨ **Special Guest: SP POWER**\n\nSSV Dandiya Divas 2026 features:\n🎵 High-voltage DJ sets & live music\n💃 Traditional Dandiya Raas & Garba performances\n🏆 Dance competitions\n\nUnforgettable Navratri celebration!",
+    answer: "✨ **Special Attraction: SP POWER**\n\nSSV Dandiya Divas 2026 features:\n🎵 High-voltage DJ sets & live music\n💃 Traditional Dandiya Raas & Garba performances\n🏆 Ramp Walk fashion contest (1st Winner gets ₹5,000 Foreign Fits coupon!)\n🎁 Guaranteed ₹200 Foreign Fits shopping benefit for every person!\n\nUnforgettable Navratri celebration!",
   },
   {
     id: "event-timings",
     categoryId: "event",
     question: "What are the event timings?",
-    keywords: ["timing","start time","end time","open","close","gate","how long","duration","schedule","6pm"],
-    answer: "🕕 The event starts at **6:00 PM IST** on 14 October 2026.\n\nPlease arrive on time to enjoy the celebrity selfie session, Dandiya Raas, DJ performances, food stalls, and competitions.\n\nFor specific gate timings contact: 📞 **+91 86181 56721**",
+    keywords: ["timing","start time","end time","open","close","gate","how long","duration","schedule","5pm","10pm"],
+    answer: "🕔 The event runs from **5:00 PM to 10:00 PM IST** on Wednesday, 14 October 2026.\n\nPlease arrive on time to enjoy the celebrity selfie session, Dandiya Raas, DJ performances, Ramp Walk, food stalls, and competitions.\n\nFor specific gate timings contact: 📞 **+91 86181 56721**",
   },
   // MY TICKET
   {

@@ -15,12 +15,17 @@ export async function GET(
       include: {
         bookingItems: { include: { ticketType: true } },
         tickets: { take: 1, orderBy: { createdAt: "asc" } },
+        coupons: {
+          where: { type: "SHOPPING_BENEFIT_200" },
+          take: 1,
+        },
       },
     });
 
     if (booking) {
       const item = booking.bookingItems[0];
       const firstTicket = booking.tickets[0];
+      const coupon = booking.coupons?.[0] || null;
       let qrCodeUrl: string | null = null;
       if (firstTicket) {
         const verifyUrl = buildVerifyUrl(firstTicket.token);
@@ -35,9 +40,18 @@ export async function GET(
         bookingId: booking.id,
         bookingRef: booking.bookingRef,
         customerName: booking.customerName,
+        customerEmail: booking.customerEmail,
+        emailDeliveryStatus: booking.emailDeliveryStatus,
         ticketType: item?.ticketType.name || "Single Pass",
         quantity: item?.quantity || 1,
         totalInPaise: booking.grandTotal,
+        shoppingBenefitOptIn: booking.shoppingBenefitOptIn,
+        coupon: coupon ? {
+          code: coupon.code,
+          benefitAmount: coupon.benefitAmount,
+          status: coupon.status,
+          expiresAt: coupon.expiresAt,
+        } : null,
         status: "CONFIRMED",
         qrCodeUrl,
       });
@@ -62,6 +76,12 @@ export async function GET(
     ticketType: "Single Pass",
     quantity: 1,
     totalInPaise: 29900,
+    shoppingBenefitOptIn: true,
+    coupon: {
+      code: "SSV-DF26-DEMO01",
+      benefitAmount: 200,
+      status: "ACTIVE",
+    },
     status: "CONFIRMED",
     qrCodeUrl,
   });

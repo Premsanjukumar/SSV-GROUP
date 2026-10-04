@@ -16,27 +16,25 @@ async function main() {
   // ============================================================
   // ADMIN USER
   // ============================================================
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@ssvgroup.in";
-  const adminPassword = process.env.ADMIN_PASSWORD || "Admin@SSV2026!";
+  const adminEmail = (process.env.ADMIN_EMAIL || "Ssvphotography777@gmail.com").toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD || "Welcome@ssvgroup";
 
-  const existingAdmin = await prisma.adminUser.findUnique({
+  const passwordHash = await bcrypt.hash(adminPassword, 12);
+  const admin = await prisma.adminUser.upsert({
     where: { email: adminEmail },
+    update: {
+      passwordHash,
+      isActive: true,
+      name: "SSV Admin",
+    },
+    create: {
+      email: adminEmail,
+      passwordHash,
+      name: "SSV Admin",
+      isActive: true,
+    },
   });
-
-  if (!existingAdmin) {
-    const passwordHash = await bcrypt.hash(adminPassword, 12);
-    await prisma.adminUser.create({
-      data: {
-        email: adminEmail,
-        passwordHash,
-        name: "SSV Admin",
-        isActive: true,
-      },
-    });
-    console.log(`✅ Admin created: ${adminEmail}`);
-  } else {
-    console.log(`ℹ️  Admin already exists: ${adminEmail}`);
-  }
+  console.log(`✅ Admin ready: ${admin.email}`);
 
   // ============================================================
   // EVENT

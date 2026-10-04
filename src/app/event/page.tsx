@@ -1,20 +1,17 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import SSVLogo from "@/components/SSVLogo";
+import BumperOfferSection from "@/components/BumperOfferSection";
+import EventHighlights from "@/components/EventHighlights";
 import Link from "next/link";
 import { Metadata } from "next";
 import {
   Calendar,
   Clock,
   MapPin,
-  Music,
-  Utensils,
-  Camera,
-  Star,
   Heart,
   Zap,
   Ticket,
-  Users,
 } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -22,39 +19,6 @@ export const metadata: Metadata = {
   description:
     "Full details for SSV Group Dandiya Night 2026 — 14 October 2026 at RS Open Ground, Bidar. Organised by SSV GROUP.",
 };
-
-const highlights = [
-  {
-    icon: Music,
-    label: "DJ + LIVE",
-    desc: "Electrifying DJ sets and live traditional & fusion music all night long",
-  },
-  {
-    icon: Utensils,
-    label: "FOOD STALL",
-    desc: "Dedicated festive food stalls serving delicious vegetarian snacks, street food & beverages",
-  },
-  {
-    icon: Camera,
-    label: "CELEBRITY WITH SELFIE",
-    desc: "Exclusive red-carpet selfie opportunity with celebrity guest star SP POWER",
-  },
-  {
-    icon: Heart,
-    label: "COUPLE'S PORTRAITS",
-    desc: "Professional thematic portrait photoshoot setups designed especially for couples",
-  },
-  {
-    icon: Star,
-    label: "SELFIE BOOTH",
-    desc: "Vibrant Navratri-themed selfie photo booths with props and festive lighting",
-  },
-  {
-    icon: Users,
-    label: "COUPLE DANCE",
-    desc: "Spacious arena dedicated for romantic & high-energy couple Dandiya Raas and Garba",
-  },
-];
 
 export default function EventPage() {
   const mapsUrl =
@@ -162,12 +126,12 @@ export default function EventPage() {
                       <div
                         className="font-bold text-xl text-white"
                       >
-                        6:00 PM Onwards
+                        5:00 PM to 10:00 PM
                       </div>
                       <div
                         className="text-sm text-amber-100/60"
                       >
-                        Doors open promptly at 6:00 PM IST
+                        Gates open promptly at 5:00 PM IST
                       </div>
                     </div>
                   </div>
@@ -258,46 +222,11 @@ export default function EventPage() {
           </div>
         </section>
 
-        {/* 6 Official Highlights */}
-        <section
-          className="py-16 px-4"
-          style={{ background: "linear-gradient(180deg, #0a0101, #1a0505)" }}
-        >
-          <div className="max-w-5xl mx-auto">
-            <h2 className="section-title">Event Highlights</h2>
-            <p className="section-subtitle">Official features from the event poster</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {highlights.map(({ icon: Icon, label, desc }) => (
-                <div
-                  key={label}
-                  className="card-festive p-6 flex items-start gap-4"
-                >
-                  <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{
-                      background: "rgba(139,0,0,0.4)",
-                      border: "1px solid rgba(212,160,23,0.3)",
-                    }}
-                  >
-                    <Icon size={22} className="text-amber-400" />
-                  </div>
-                  <div>
-                    <div
-                      className="font-bold text-base mb-1 text-white"
-                    >
-                      {label}
-                    </div>
-                    <div
-                      className="text-xs leading-relaxed text-amber-100/60"
-                    >
-                      {desc}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+        {/* Bumper Offer & Lucky Winner Section */}
+        <BumperOfferSection />
+
+        {/* 8 Official Highlights (Ramp Walk as first item) */}
+        <EventHighlights />
 
         {/* Ticket CTA */}
         <section

@@ -18,12 +18,19 @@ export async function GET(
   let totalInPaise = 29900;
   let verifyUrl = buildVerifyUrl("demo-ticket-token-123456");
 
+  let shoppingBenefitOptIn = true;
+  let couponCode: string | null = null;
+
   try {
     const dbBooking = await prisma.booking.findUnique({
       where: { id: bookingId },
       include: {
         bookingItems: { include: { ticketType: true } },
         tickets: { take: 1, orderBy: { createdAt: "asc" } },
+        coupons: {
+          where: { type: "SHOPPING_BENEFIT_200" },
+          take: 1,
+        },
       },
     });
 
@@ -37,6 +44,8 @@ export async function GET(
       ticketType = item?.ticketType.name || "Single Pass";
       quantity = item?.quantity || 1;
       totalInPaise = dbBooking.grandTotal;
+      shoppingBenefitOptIn = dbBooking.shoppingBenefitOptIn;
+      couponCode = dbBooking.coupons?.[0]?.code || null;
       if (firstTicket) {
         verifyUrl = buildVerifyUrl(firstTicket.token);
       }
@@ -56,10 +65,12 @@ export async function GET(
       totalInPaise,
       eventName: "SSV Dandiya Divas 2026",
       eventDate: "14 October 2026, Wednesday",
-      eventTime: "5:00 PM Onwards",
-      venue: "Beside Beladale Petrol Pump, Gumpa, Bidar",
+      eventTime: "5:00 PM to 10:00 PM",
+      venue: "RS Open Ground, Beside Beldale Petrol Pump, Gumpa, Bidar",
       verifyUrl,
       status: "CONFIRMED",
+      shoppingBenefitOptIn,
+      couponCode,
     });
 
     return new Response(new Uint8Array(pdfBuffer), {

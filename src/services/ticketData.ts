@@ -11,6 +11,12 @@ export interface TicketData {
   ticketType: string;
   quantity: number;
   totalInPaise: number;
+  shoppingBenefitOptIn?: boolean;
+  coupon?: {
+    code: string;
+    status: string;
+    benefitAmount: number;
+  } | null;
   event: {
     name: string;
     venue: string;
@@ -37,6 +43,10 @@ export async function getTicketData(bookingId: string): Promise<TicketData | nul
         event: true,
         tickets: true,
         bookingItems: { include: { ticketType: true } },
+        coupons: {
+          where: { type: "SHOPPING_BENEFIT_200" },
+          take: 1,
+        },
       },
     });
 
@@ -49,6 +59,7 @@ export async function getTicketData(bookingId: string): Promise<TicketData | nul
         (sum: number, i: { quantity: number }) => sum + i.quantity,
         0
       );
+      const coupon = booking.coupons?.[0] || null;
 
       return {
         bookingId: booking.id,
@@ -60,12 +71,18 @@ export async function getTicketData(bookingId: string): Promise<TicketData | nul
         ticketType: ticketTypeNames || "General Pass",
         quantity: totalQuantity || 1,
         totalInPaise: booking.grandTotal,
+        shoppingBenefitOptIn: booking.shoppingBenefitOptIn,
+        coupon: coupon ? {
+          code: coupon.code,
+          status: coupon.status,
+          benefitAmount: coupon.benefitAmount,
+        } : null,
         event: {
           name: booking.event?.name || "SSV Dandiya Divas 2026",
-          venue: booking.event?.venue || "RS Open Ground, Beside Beldale Petrol Pump, Gumpa",
+          venue: booking.event?.venue || "RS Open Ground, Beside Beldale Petrol Pump, Gumpa, Bidar",
           city: booking.event?.city || "Bidar",
-          dateText: formatDate(booking.event?.startDateTime || new Date("2026-10-14T18:00:00Z")),
-          timeText: formatTime(booking.event?.startDateTime || new Date("2026-10-14T18:00:00Z")),
+          dateText: formatDate(booking.event?.startDateTime || new Date("2026-10-14T17:00:00+05:30")),
+          timeText: formatTime(booking.event?.startDateTime || new Date("2026-10-14T17:00:00+05:30")),
         },
         tickets: booking.tickets.map((t: { id: string; token: string; checkedIn: boolean }) => ({
           id: t.id,

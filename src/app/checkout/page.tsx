@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Lock, CreditCard, AlertCircle, Loader2, Shield } from "lucide-react";
+import ShoppingBenefitSelector from "@/components/ShoppingBenefitSelector";
 
 interface BookingSummary {
   bookingId: string;
@@ -13,7 +14,11 @@ interface BookingSummary {
   customerEmail: string;
   ticketType: string;
   quantity: number;
+  subtotalInPaise?: number;
+  discountInPaise?: number;
+  notes?: string;
   totalInPaise: number;
+  shoppingBenefitOptIn?: boolean;
   status: string;
 }
 
@@ -90,6 +95,20 @@ function CheckoutInner() {
       const data = await res.json();
       setIsDemoMode(data.mode === "demo");
     } catch { /* ignore */ }
+  }
+
+  async function handleBenefitToggle(newOptIn: boolean) {
+    if (!booking || paying) return;
+    setBooking((prev) => (prev ? { ...prev, shoppingBenefitOptIn: newOptIn } : null));
+    try {
+      await fetch(`/api/bookings/${booking.bookingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shoppingBenefitOptIn: newOptIn }),
+      });
+    } catch {
+      /* ignore optimistic update fallback */
+    }
   }
 
   async function handleDemoPayment() {
@@ -249,14 +268,50 @@ function CheckoutInner() {
                 ))}
               </div>
 
+              {/* Optional ₹200 Shopping Benefit Choice Selector (Allows customer to change mind before payment) */}
+              <div className="mb-5">
+                <ShoppingBenefitSelector
+                  value={booking.shoppingBenefitOptIn !== false}
+                  onChange={handleBenefitToggle}
+                  disabled={paying}
+                />
+              </div>
+
+              {/* Shopping Benefit Status Confirmation */}
+              <div
+                className={`p-3.5 rounded-xl mb-4 border flex items-center justify-between text-xs transition-all ${
+                  booking.shoppingBenefitOptIn !== false
+                    ? "bg-emerald-950/30 border-emerald-500/30"
+                    : "bg-stone-900/40 border-amber-500/20"
+                }`}
+              >
+                <span className="flex items-center gap-1.5 text-amber-300 font-semibold">
+                  🎁 Foreign Fits Benefit:
+                </span>
+                <span
+                  className={
+                    booking.shoppingBenefitOptIn !== false
+                      ? "text-emerald-300 font-bold"
+                      : "text-stone-400 font-medium"
+                  }
+                >
+                  {booking.shoppingBenefitOptIn !== false
+                    ? "₹200 Shopping Voucher (Post-Payment)"
+                    : "Declined by Customer (No Voucher)"}
+                </span>
+              </div>
+
               <div className="p-4 rounded-xl mb-6"
                 style={{ background: "rgba(26,5,5,0.8)", border: "1px solid rgba(212,160,23,0.2)" }}>
                 <div className="flex justify-between items-center">
-                  <span className="font-bold" style={{ color: "#FFF8DC" }}>Total Amount</span>
+                  <span className="font-bold" style={{ color: "#FFF8DC" }}>Total Amount to Pay</span>
                   <span className="font-display font-black text-2xl" style={{ color: "#D4A017" }}>
                     {formatCurrency(booking.totalInPaise)}
                   </span>
                 </div>
+                <p className="text-[11px] text-amber-100/60 mt-1">
+                  Secure Razorpay encrypted transaction • Pass confirmed instantly
+                </p>
               </div>
 
               {/* Terms and Conditions Checkbox */}

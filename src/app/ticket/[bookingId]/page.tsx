@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import { getTicketData } from "@/services/ticketData";
 import { mapsUrl } from "@/lib/event";
 import { notFound } from "next/navigation";
+import TicketCouponSection from "@/components/TicketCouponSection";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Your ticket | SSV Dandiya Divas 2026", robots: { index: false } };
@@ -28,6 +29,14 @@ export default async function TicketPage({ params }: { params: Promise<{ booking
           </dl>
           <div className="qr"><img src={src} alt={`Entry QR code for pass ${i + 1} of ${qrs.length}`} width={260} height={260} /><p>Pass {i + 1} of {qrs.length}. Show this QR at the entry gate.</p></div>
         </article>))}
+      {d.shoppingBenefitOptIn !== false && d.coupon ? (
+        <TicketCouponSection
+          code={d.coupon.code}
+          benefitAmount={d.coupon.benefitAmount}
+          status={d.coupon.status}
+          bookingRef={d.reference}
+        />
+      ) : null}
       <div className="btns">
         <a className="btn" href={`/api/tickets/${d.bookingId}/pdf`}>Download ticket</a>
         <a className="btn alt" href={mapsUrl()} target="_blank" rel="noopener noreferrer">View location</a>

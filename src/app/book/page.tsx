@@ -4,7 +4,8 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { Ticket, AlertCircle, CheckCircle, ChevronRight, Loader2 } from "lucide-react";
+import { Ticket, AlertCircle, CheckCircle, ChevronRight, Loader2, Gift } from "lucide-react";
+import ShoppingBenefitSelector from "@/components/ShoppingBenefitSelector";
 
 interface TicketType {
   id: string;
@@ -21,6 +22,7 @@ interface BookingState {
   step: 1 | 2 | 3;
   ticketType: TicketType | null;
   quantity: number;
+  shoppingBenefitOptIn: boolean;
   form: {
     customerName: string;
     customerEmail: string;
@@ -49,6 +51,7 @@ function BookingPageInner() {
     step: 1,
     ticketType: null,
     quantity: 1,
+    shoppingBenefitOptIn: true,
     form: {
       customerName: "",
       customerEmail: "",
@@ -76,7 +79,9 @@ function BookingPageInner() {
               ? t.isFemaleOnly
               : !t.isFemaleOnly
           );
-          if (match) setState((s) => ({ ...s, ticketType: match, step: 1 }));
+          if (match) {
+            setState((s) => ({ ...s, ticketType: match, step: 1 }));
+          }
         }
       }
     } catch {
@@ -145,6 +150,7 @@ function BookingPageInner() {
           customerPhone: state.form.customerPhone.trim(),
           customerCity: state.form.customerCity.trim() || undefined,
           femaleConfirmation: state.form.femaleConfirmation,
+          shoppingBenefitOptIn: state.shoppingBenefitOptIn,
           eventId: "auto", // server will resolve
         }),
       });
@@ -276,6 +282,10 @@ function BookingPageInner() {
                                 )}
                                 <div className="text-sm mt-1" style={{ color: "rgba(255,248,220,0.5)" }}>
                                   {ticket.description}
+                                </div>
+                                <div className="mt-1.5 flex items-center gap-1.5 text-xs text-emerald-400 font-semibold">
+                                  <Gift size={12} className="text-emerald-400 flex-shrink-0" />
+                                  <span>Includes ₹200 Shopping Benefit at Foreign Fits</span>
                                 </div>
                               </div>
                             </div>
@@ -414,6 +424,12 @@ function BookingPageInner() {
                       </div>
                     )}
 
+                    {/* Optional ₹200 Shopping Benefit Choice */}
+                    <ShoppingBenefitSelector
+                      value={state.shoppingBenefitOptIn}
+                      onChange={(optIn) => setState((s) => ({ ...s, shoppingBenefitOptIn: optIn }))}
+                    />
+
                     {/* Terms and Conditions Checkbox */}
                     <div
                       className="p-4 rounded-xl"
@@ -496,6 +512,34 @@ function BookingPageInner() {
                     ))}
                   </div>
 
+                  {/* Foreign Fits Shopping Benefit Status Callout */}
+                  {state.shoppingBenefitOptIn ? (
+                    <div className="mb-6 p-4 rounded-xl border border-emerald-500/30 bg-emerald-950/20">
+                      <div className="flex items-center gap-2 mb-1.5 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                        <Gift size={15} className="text-emerald-400 flex-shrink-0" />
+                        🎁 Foreign Fits ₹200 Shopping Benefit Selected
+                      </div>
+                      <p className="text-xs text-amber-100/90 leading-relaxed">
+                        You chose <strong>YES</strong> to receive the official <strong>₹200 Shopping Benefit</strong> at{" "}
+                        <strong>Foreign Fits</strong> imported fashion. Your unique digital coupon code will be generated immediately upon successful payment confirmation!
+                      </p>
+                      <div className="mt-2.5 flex items-center gap-2 text-[11px] text-emerald-300 font-semibold">
+                        <CheckCircle size={13} className="text-emerald-400 flex-shrink-0" />
+                        <span>Included at no extra cost (Ticket price remains unchanged)</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mb-6 p-4 rounded-xl border border-amber-500/20 bg-stone-900/40">
+                      <div className="flex items-center gap-2 mb-1 text-xs font-bold uppercase tracking-wider text-amber-300/80">
+                        <Gift size={15} className="text-amber-400/70 flex-shrink-0" />
+                        Foreign Fits Shopping Benefit: Declined
+                      </div>
+                      <p className="text-xs text-amber-200/60 leading-relaxed">
+                        You chose not to receive the ₹200 shopping benefit coupon. Your normal event ticket will be issued upon payment confirmation.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="rounded-xl p-5" style={{ background: "rgba(26,5,5,0.8)", border: "1px solid rgba(212,160,23,0.2)" }}>
                     <div className="flex justify-between mb-2">
                       <span className="text-sm" style={{ color: "rgba(255,248,220,0.5)" }}>
@@ -503,13 +547,22 @@ function BookingPageInner() {
                       </span>
                       <span style={{ color: "#FFF8DC" }}>{formatCurrency(totalInPaise)}</span>
                     </div>
+                    <div className="flex justify-between mb-2 text-xs font-medium">
+                      <span className="flex items-center gap-1" style={{ color: "rgba(255,248,220,0.6)" }}>
+                        <Gift size={12} className="flex-shrink-0" />
+                        Foreign Fits Benefit
+                      </span>
+                      <span className={state.shoppingBenefitOptIn ? "text-emerald-400 font-semibold" : "text-stone-400"}>
+                        {state.shoppingBenefitOptIn ? "₹200 Shopping Voucher (Post-Payment)" : "Declined / Skipped"}
+                      </span>
+                    </div>
                     <div className="flex justify-between mb-2">
                       <span className="text-sm" style={{ color: "rgba(255,248,220,0.5)" }}>Platform fee</span>
                       <span className="text-sm" style={{ color: "rgba(255,248,220,0.5)" }}>₹0</span>
                     </div>
                     <div className="border-t pt-3 mt-3" style={{ borderColor: "rgba(212,160,23,0.2)" }}>
                       <div className="flex justify-between items-center">
-                        <span className="font-bold" style={{ color: "#FFF8DC" }}>Total</span>
+                        <span className="font-bold" style={{ color: "#FFF8DC" }}>Total Amount to Pay</span>
                         <span className="font-display font-black text-2xl" style={{ color: "#D4A017" }}>
                           {formatCurrency(totalInPaise)}
                         </span>

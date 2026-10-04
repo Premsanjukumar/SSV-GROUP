@@ -123,16 +123,15 @@ export default function CountdownTimer() {
   ];
 
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div className="flex flex-col items-center gap-3 sm:gap-4 max-w-full overflow-hidden px-1">
       <p
-        className="text-xs tracking-widest uppercase font-semibold"
-        style={{ color: "rgba(212,160,23,0.6)" }}
+        className="text-[10px] sm:text-xs tracking-widest uppercase font-semibold text-amber-400/80"
       >
         Event starts in
       </p>
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center justify-center gap-1 min-[360px]:gap-2 sm:gap-3 max-w-full">
         {units.map((unit, i) => (
-          <div key={unit.label} className="flex items-center gap-2 sm:gap-3">
+          <div key={unit.label} className="flex items-center gap-1 min-[360px]:gap-2 sm:gap-3">
             <div className="countdown-digit">
               <span className="number">
                 {String(unit.value).padStart(2, "0")}
@@ -141,8 +140,7 @@ export default function CountdownTimer() {
             </div>
             {i < units.length - 1 && (
               <span
-                className="font-display font-bold text-2xl leading-none animate-pulse"
-                style={{ color: "rgba(212,160,23,0.5)" }}
+                className="font-display font-bold text-lg sm:text-2xl leading-none animate-pulse text-amber-400/50"
               >
                 :
               </span>

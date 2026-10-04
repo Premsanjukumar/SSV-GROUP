@@ -5,12 +5,13 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   LayoutDashboard, Users, QrCode, Settings, LogOut,
-  Menu, X,
+  Menu, X, Gift,
 } from "lucide-react";
 
 const navItems = [
   { href: "/admin", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/admin/bookings", icon: Users, label: "Bookings" },
+  { href: "/admin/coupons", icon: Gift, label: "Coupons & Winners" },
   { href: "/admin/scanner", icon: QrCode, label: "QR Scanner" },
   { href: "/admin/settings", icon: Settings, label: "Settings" },
 ];

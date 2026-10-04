@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
         totalInPaise: b.grandTotal,
         status: b.status,
         paymentStatus: b.payment?.status || "PENDING",
+        emailDeliveryStatus: b.emailDeliveryStatus || "PENDING",
         paymentId: b.payment?.razorpayPaymentId,
         isDemoPayment: b.payment?.paymentMode === "demo",
         checkedIn: b.tickets[0]?.checkedIn === true,

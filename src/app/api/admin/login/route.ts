@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { AdminLoginSchema } from "@/validators";
 import { createSession, AUTH_COOKIE, SESSION_DURATION } from "@/lib/auth";
 
-// Demo credentials — used when no DB is connected
-const DEMO_ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@ssvgroup.in";
-const DEMO_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Admin@SSV2026!";
+// Demo / fallback credentials
+const DEMO_ADMIN_EMAIL = process.env.ADMIN_EMAIL || "Ssvphotography777@gmail.com";
+const DEMO_ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Welcome@ssvgroup";
 
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -27,7 +27,14 @@ export async function POST(req: NextRequest) {
     const { prisma } = await import("@/lib/prisma");
     const bcrypt = await import("bcryptjs");
 
-    const admin = await prisma.adminUser.findUnique({ where: { email } });
+    const admin = await prisma.adminUser.findFirst({
+      where: {
+        email: {
+          equals: email,
+          mode: "insensitive",
+        },
+      },
+    });
     if (admin && admin.isActive) {
       const passwordValid = await bcrypt.compare(password, admin.passwordHash);
       if (!passwordValid) {

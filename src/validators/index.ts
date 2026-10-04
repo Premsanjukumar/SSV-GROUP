@@ -26,9 +26,24 @@ export const BookingFormSchema = z.object({
     .array(z.string().max(100))
     .optional(),
   eventId: z.string().min(1, "Invalid event"),
+  couponCode: z.string().trim().max(50).optional(),
+  shoppingBenefitOptIn: z.boolean().optional(),
 });
 
 export type BookingFormData = z.infer<typeof BookingFormSchema>;
+
+export const CreateWinnerCouponSchema = z.object({
+  winnerName: z.string().min(2, "Winner name must be at least 2 characters").max(100),
+  notes: z.string().max(300).optional(),
+});
+
+export const RedeemCouponSchema = z.object({
+  code: z.string().min(3, "Coupon code is required").max(50),
+});
+
+export const BenefitChoiceSchema = z.object({
+  shoppingBenefitOptIn: z.boolean(),
+});
 
 // ============================================================
 // PAYMENT VERIFICATION VALIDATORS

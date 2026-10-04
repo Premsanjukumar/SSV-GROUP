@@ -590,24 +590,49 @@
    ============================================================ */
 .countdown-digit {
   @apply flex flex-col items-center justify-center;
-  background: rgba(26, 5, 5, 0.8);
+  background: rgba(26, 5, 5, 0.85);
   border: 1px solid rgba(212, 160, 23, 0.3);
-  border-radius: 12px;
-  padding: 12px 16px;
-  min-width: 70px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(212, 160, 23, 0.1);
+  border-radius: 10px;
+  padding: 6px 8px;
+  min-width: 52px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(212, 160, 23, 0.1);
 }
 
 .countdown-digit .number {
-  @apply font-display font-bold text-3xl md:text-4xl;
+  @apply font-display font-bold text-xl;
   color: #D4A017;
   line-height: 1;
-  text-shadow: 0 0 20px rgba(212, 160, 23, 0.5);
+  text-shadow: 0 0 15px rgba(212, 160, 23, 0.5);
 }
 
 .countdown-digit .label {
-  @apply text-[10px] font-semibold tracking-widest uppercase mt-1;
-  color: rgba(255, 248, 220, 0.5);
+  @apply text-[9px] font-semibold tracking-wider uppercase mt-1;
+  color: rgba(255, 248, 220, 0.6);
+}
+
+@media (min-width: 375px) {
+  .countdown-digit {
+    min-width: 62px;
+    padding: 8px 12px;
+    border-radius: 12px;
+  }
+  .countdown-digit .number {
+    font-size: 1.6rem;
+  }
+  .countdown-digit .label {
+    font-size: 10px;
+  }
+}
+
+@media (min-width: 640px) {
+  .countdown-digit {
+    min-width: 76px;
+    padding: 12px 16px;
+    border-radius: 14px;
+  }
+  .countdown-digit .number {
+    font-size: 2.25rem;
+  }
 }
 
 /* ============================================================
@@ -724,15 +749,44 @@
 }
 
 /* ============================================================
-   RESPONSIVE UTILITIES
+   RESPONSIVE HERO TYPOGRAPHY
+   Fluid scaling from 320px to 1440px+
+   Calibrated line-height and spacing: NO merging or overlapping
    ============================================================ */
-@media (max-width: 375px) {
-  .countdown-digit {
-    min-width: 58px;
-    padding: 10px 12px;
-  }
+.hero-title-dandiya {
+  font-family: var(--font-cinzel), Cinzel, Georgia, serif;
+  font-size: clamp(2.5rem, 10vw, 6.5rem);
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: 0.05em;
+  background: linear-gradient(180deg, #FFFFFF 0%, #FFF3B0 25%, #F5C842 55%, #D4A017 80%, #B8860B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 4px 20px rgba(212, 160, 23, 0.45)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
+  display: block;
+}
 
-  .countdown-digit .number {
-    font-size: 1.75rem;
+.hero-title-night {
+  font-family: var(--font-playfair), "Playfair Display", Georgia, serif;
+  font-size: clamp(2.25rem, 8.5vw, 5.5rem);
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1.15;
+  letter-spacing: 0.03em;
+  margin-top: 0.25rem;
+  background: linear-gradient(135deg, #FFE4E6 0%, #FF6584 35%, #FF2A6D 70%, #F5C842 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 3px 18px rgba(255, 42, 109, 0.55));
+  display: block;
+}
+
+@media (min-width: 640px) {
+  .hero-title-night {
+    margin-top: 0.5rem;
   }
 }
+
+

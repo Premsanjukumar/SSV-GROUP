@@ -22,7 +22,10 @@ export interface DeliveryResult {
  * Executes post-payment asynchronous fulfillment (Email, SMS, WhatsApp).
  * Safe and decoupled: uses channel-specific delivery status guards.
  */
-export async function afterPayment(bookingId: string): Promise<DeliveryResult> {
+export async function afterPayment(
+  bookingId: string,
+  options: { forceEmailResend?: boolean } = {}
+): Promise<DeliveryResult> {
   const result: DeliveryResult = {
     emailSent: false,
     smsSent: false,
@@ -35,7 +38,12 @@ export async function afterPayment(bookingId: string): Promise<DeliveryResult> {
       include: {
         event: true,
         bookingItems: { include: { ticketType: true } },
-        tickets: true,
+        tickets: { orderBy: { createdAt: "asc" } },
+        payment: true,
+        coupons: {
+          where: { type: "SHOPPING_BENEFIT_200" },
+          take: 1,
+        },
       },
     });
 
@@ -45,7 +53,7 @@ export async function afterPayment(bookingId: string): Promise<DeliveryResult> {
     }
 
     const ticketItem = booking.bookingItems[0];
-    const ticketType = ticketItem?.ticketType?.name || "Pass";
+    const ticketType = ticketItem?.ticketType?.name || "Single Pass";
     const quantity = ticketItem?.quantity || 1;
     const firstTicket = booking.tickets[0];
 
@@ -53,12 +61,20 @@ export async function afterPayment(bookingId: string): Promise<DeliveryResult> {
     const ticketUrl = firstTicket
       ? `${baseUrl}/ticket/${booking.id}`
       : `${baseUrl}/booking/success?bookingId=${booking.id}`;
+    const qrVerifyUrl = firstTicket
+      ? `${baseUrl}/verify/${firstTicket.token}`
+      : ticketUrl;
 
     const formattedDate = formatDate(booking.event.startDateTime);
     const formattedTime = formatTime(booking.event.startDateTime);
     const venueStr = `${booking.event.venue}, ${booking.event.city}`;
+    const couponCode = booking.coupons?.[0]?.code || null;
+    const paymentId =
+      booking.razorpayPaymentId ||
+      booking.payment?.razorpayPaymentId ||
+      "Confirmed via Razorpay";
 
-    // 1. GENERATE PDF TICKET (If needed for email)
+    // 1. GENERATE PDF TICKET (Reuses existing tickets, embeds secure verify QR)
     let pdfBuffer: Buffer | null = null;
     try {
       pdfBuffer = await generateTicketPDF({
@@ -73,15 +89,40 @@ export async function afterPayment(bookingId: string): Promise<DeliveryResult> {
         eventDate: formattedDate,
         eventTime: formattedTime,
         venue: venueStr,
-        verifyUrl: ticketUrl,
+        verifyUrl: qrVerifyUrl,
         status: "CONFIRMED",
+        shoppingBenefitOptIn: booking.shoppingBenefitOptIn,
+        couponCode,
       });
     } catch (pdfErr) {
       console.error("[postConfirm] PDF ticket generation error:", pdfErr instanceof Error ? pdfErr.message : pdfErr);
     }
 
-    // 2. TRANSACTIONAL EMAIL CONFIRMATION
-    if (booking.emailDeliveryStatus !== DeliveryStatus.SENT && booking.customerEmail) {
+    // 2. TRANSACTIONAL EMAIL CONFIRMATION (Atomic idempotency + safe error handling)
+    const shouldSendEmail =
+      booking.customerEmail &&
+      (options.forceEmailResend || booking.emailDeliveryStatus !== DeliveryStatus.SENT);
+
+    if (shouldSendEmail) {
+      // Atomic claim to prevent double-sends under concurrent webhook + client verify calls
+      if (!options.forceEmailResend) {
+        const claim = await prisma.booking.updateMany({
+          where: {
+            id: bookingId,
+            emailDeliveryStatus: { notIn: [DeliveryStatus.SENT, DeliveryStatus.QUEUED] },
+          },
+          data: {
+            emailDeliveryStatus: DeliveryStatus.QUEUED,
+          },
+        });
+
+        // If another process already claimed or sent the email, skip duplicate send
+        if (claim.count === 0 && booking.emailDeliveryStatus === DeliveryStatus.SENT) {
+          result.emailSent = true;
+          return result;
+        }
+      }
+
       try {
         const emailRes = await sendBookingConfirmation(
           {
@@ -91,10 +132,15 @@ export async function afterPayment(bookingId: string): Promise<DeliveryResult> {
             ticketType,
             quantity,
             totalInPaise: booking.grandTotal,
-            eventDate: formattedDate,
-            eventTime: formattedTime,
-            venue: venueStr,
+            paymentId,
+            eventDate: "14 October 2026",
+            eventDay: "Wednesday",
+            eventTime: "5:00 PM – 10:00 PM",
+            venue: "RS Open Ground, Beside Beldale Petrol Pump, Gumpa, Bidar",
+            specialAttraction: "SP POWER",
             ticketUrl,
+            shoppingBenefitOptIn: booking.shoppingBenefitOptIn,
+            couponCode,
           },
           pdfBuffer || undefined
         );

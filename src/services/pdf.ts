@@ -16,6 +16,8 @@ interface TicketPDFData {
   venue: string;
   verifyUrl: string;
   status: string;
+  shoppingBenefitOptIn?: boolean;
+  couponCode?: string | null;
 }
 
 /**
@@ -177,14 +179,14 @@ export async function generateTicketPDF(
 
   doc.setFontSize(9);
   doc.setTextColor(255, 248, 220);
-  doc.text("14 October 2026  •  Wednesday  •  5:00 PM Onwards", W / 2, boxY + 16, {
+  doc.text("14 October 2026  •  Wednesday  •  5:00 PM to 10:00 PM", W / 2, boxY + 16, {
     align: "center",
   });
 
   doc.setFontSize(8);
   doc.setTextColor(200, 160, 100);
   doc.text(
-    "Beside Beladale Petrol Pump, Gumpa, Bidar, Karnataka",
+    "RS Open Ground, Beside Beldale Petrol Pump, Gumpa, Bidar",
     W / 2,
     boxY + 25,
     { align: "center" }
@@ -192,18 +194,19 @@ export async function generateTicketPDF(
 
   doc.setFontSize(8);
   doc.setTextColor(180, 140, 80);
-  doc.text("Featuring: SP POWER", W / 2, boxY + 33, { align: "center" });
+  const attractionText = data.shoppingBenefitOptIn !== false && data.couponCode
+    ? `Special Attraction: SP POWER  •  Foreign Fits Benefit Code: ${data.couponCode}`
+    : "Special Attraction: SP POWER";
+  doc.text(attractionText, W / 2, boxY + 33, { align: "center" });
 
   // ---- Instructions ----
   doc.setFontSize(8);
   doc.setFont("helvetica", "italic");
   doc.setTextColor(150, 100, 80);
-  doc.text(
-    "Please present this QR ticket at the entry gate. Non-transferable.",
-    W / 2,
-    222,
-    { align: "center" }
-  );
+  const instructionText = data.shoppingBenefitOptIn !== false && data.couponCode
+    ? `Please present this QR ticket at entry. Redeem Rs. 200 at Foreign Fits using Coupon: ${data.couponCode}`
+    : "Please present this QR ticket at the entry gate.";
+  doc.text(instructionText, W / 2, 222, { align: "center" });
 
   // ---- Footer ----
   doc.setFillColor(109, 11, 11);

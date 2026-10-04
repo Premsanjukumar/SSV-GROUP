@@ -10,22 +10,31 @@ interface EmailConfig {
   from: string;
 }
 
-function getEmailConfig(): EmailConfig | null {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM } =
-    process.env;
+interface EmailConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+}
 
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
+function getEmailConfig(): EmailConfig | null {
+  const host = process.env.SMTP_HOST || (process.env.SMTP_USER ? "smtp.gmail.com" : "");
+  const port = parseInt(process.env.SMTP_PORT || "587");
+  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+  const user = process.env.SMTP_USER || "";
+  const pass = process.env.SMTP_PASSWORD || process.env.SMTP_PASS || "";
+  const from =
+    process.env.SMTP_FROM ||
+    process.env.EMAIL_FROM ||
+    `SSV Group <${user || "noreply@ssvgroup.in"}>`;
+
+  if (!host || !user || !pass) {
     return null;
   }
 
-  return {
-    host: SMTP_HOST,
-    port: parseInt(SMTP_PORT || "587"),
-    secure: process.env.SMTP_SECURE === "true",
-    user: SMTP_USER,
-    pass: SMTP_PASS,
-    from: EMAIL_FROM || "SSV Group <noreply@ssvgroup.in>",
-  };
+  return { host, port, secure, user, pass, from };
 }
 
 function createTransporter(config: EmailConfig) {
@@ -47,137 +56,337 @@ export interface BookingConfirmationData {
   ticketType: string;
   quantity: number;
   totalInPaise: number;
-  eventDate: string;
-  eventTime: string;
-  venue: string;
+  paymentId?: string;
+  eventDate?: string;
+  eventDay?: string;
+  eventTime?: string;
+  venue?: string;
+  specialAttraction?: string;
   ticketUrl: string;
+  shoppingBenefitOptIn?: boolean;
+  couponCode?: string | null;
 }
 
 function buildConfirmationHTML(data: BookingConfirmationData): string {
+  const dateStr = data.eventDate || "14 October 2026";
+  const dayStr = data.eventDay || "Wednesday";
+  const timeStr = data.eventTime || "5:00 PM – 10:00 PM";
+  const venueStr =
+    data.venue || "RS Open Ground, Beside Beldale Petrol Pump, Gumpa, Bidar";
+  const attractionStr = data.specialAttraction || "SP POWER";
+  const paymentIdStr = data.paymentId || "Confirmed via Razorpay";
+  const amountStr = formatCurrency(data.totalInPaise);
+
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Booking Confirmed — SSV Dandiya Divas 2026</title>
-  <style>
-    body { margin: 0; padding: 0; background: #1a0505; font-family: Georgia, serif; }
-    .container { max-width: 600px; margin: 0 auto; background: #fff; }
-    .header { background: linear-gradient(135deg, #6D0B0B, #8B0000, #C0392B); padding: 40px 30px; text-align: center; }
-    .header h1 { color: #D4A017; font-size: 28px; margin: 0; letter-spacing: 2px; }
-    .header p { color: #FFF8DC; margin: 8px 0 0; font-size: 14px; letter-spacing: 3px; }
-    .gold-bar { background: linear-gradient(90deg, #D4A017, #F5C842, #D4A017); height: 3px; }
-    .body { padding: 40px 30px; background: #fff; }
-    .greeting { font-size: 18px; color: #333; margin-bottom: 20px; }
-    .booking-box { background: #FFF8F0; border: 2px solid #D4A017; border-radius: 12px; padding: 24px; margin: 24px 0; }
-    .booking-ref { font-size: 24px; font-weight: bold; color: #8B0000; text-align: center; letter-spacing: 3px; margin-bottom: 20px; font-family: monospace; }
-    .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 15px; }
-    .detail-label { color: #666; }
-    .detail-value { color: #333; font-weight: 600; }
-    .cta-button { display: block; background: linear-gradient(135deg, #8B0000, #C0392B); color: #D4A017; text-align: center; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold; letter-spacing: 1px; margin: 24px 0; }
-    .instruction { background: #f0f8f0; border-left: 4px solid #2D5016; padding: 16px; border-radius: 4px; font-size: 14px; color: #444; }
-    .footer { background: #1a0505; color: #888; text-align: center; padding: 30px; font-size: 13px; }
-    .footer a { color: #D4A017; }
-    .sponsor-note { color: #aaa; font-size: 12px; margin-top: 10px; }
-  </style>
+  <title>🎉 Your SSV GROUP Dandiya Divas 2026 Ticket is Confirmed!</title>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>🎊 SSV GROUP</h1>
-      <p>DANDIYA DIVAS 2026</p>
-    </div>
-    <div class="gold-bar"></div>
-    <div class="body">
-      <p class="greeting">Namaste, <strong>${data.customerName}</strong>! 🙏</p>
-      <p style="color:#555; line-height:1.6;">
-        Your booking for <strong>SSV Dandiya Divas 2026</strong> has been confirmed. 
-        We're thrilled to have you join us for an unforgettable Navratri celebration!
-      </p>
+<body style="margin: 0; padding: 0; background-color: #120202; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #120202; padding: 20px 0;">
+    <tr>
+      <td align="center">
+        <!-- Main Email Container -->
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.5);">
+          
+          <!-- Festive Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #6D0B0B 0%, #8B0000 50%, #B22222 100%); padding: 36px 24px; text-align: center;">
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center">
+                    <div style="display: inline-block; padding: 4px 14px; background: rgba(212,160,23,0.2); border: 1px solid #D4A017; border-radius: 20px; color: #F5C842; font-size: 11px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px;">
+                      Official Ticket Confirmation
+                    </div>
+                    <h1 style="color: #F5C842; font-size: 26px; font-weight: 800; margin: 0 0 6px 0; letter-spacing: 2px; text-transform: uppercase;">
+                      SSV GROUP
+                    </h1>
+                    <p style="color: #FFF8DC; font-size: 16px; font-weight: 700; margin: 0 0 16px 0; letter-spacing: 3px; text-transform: uppercase;">
+                      DANDIYA DIVAS 2026
+                    </p>
+                    <div style="background-color: #27ae60; color: #ffffff; display: inline-block; padding: 8px 20px; border-radius: 50px; font-size: 13px; font-weight: bold; letter-spacing: 1px; box-shadow: 0 2px 8px rgba(39,174,96,0.3);">
+                      🎉 BOOKING CONFIRMED
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-      <div class="booking-box">
-        <div class="booking-ref">${data.bookingRef}</div>
-        <div class="detail-row">
-          <span class="detail-label">Event</span>
-          <span class="detail-value">SSV Dandiya Divas 2026</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Date</span>
-          <span class="detail-value">${data.eventDate}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Time</span>
-          <span class="detail-value">${data.eventTime}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Venue</span>
-          <span class="detail-value">${data.venue}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Ticket Type</span>
-          <span class="detail-value">${data.ticketType}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Quantity</span>
-          <span class="detail-value">${data.quantity}</span>
-        </div>
-        <div class="detail-row" style="border-bottom:none;">
-          <span class="detail-label">Amount Paid</span>
-          <span class="detail-value" style="color:#8B0000; font-size:18px;">${formatCurrency(data.totalInPaise)}</span>
-        </div>
-      </div>
+          <!-- Gold Accent Bar -->
+          <tr>
+            <td style="background: linear-gradient(90deg, #D4A017, #F5C842, #D4A017); height: 4px; font-size: 0; line-height: 0;">&nbsp;</td>
+          </tr>
 
-      <a href="${data.ticketUrl}" class="cta-button">
-        🎟️ VIEW YOUR DIGITAL TICKET
-      </a>
+          <!-- Email Content Body -->
+          <tr>
+            <td style="padding: 32px 28px; color: #2D3748;">
+              <p style="font-size: 17px; line-height: 1.5; color: #1a202c; margin: 0 0 16px 0;">
+                Hello <strong>${data.customerName}</strong>,
+              </p>
+              <p style="font-size: 15px; line-height: 1.6; color: #4a5568; margin: 0 0 24px 0;">
+                Your ticket booking for <strong>SSV GROUP Dandiya Divas 2026</strong> has been successfully confirmed.
+              </p>
 
-      <div class="instruction">
-        <strong>📱 Important:</strong> Please present your QR ticket at the entry gate. 
-        You can view and download your ticket anytime at the link above. 
-        A PDF version is also available on your ticket page.
-      </div>
+              <!-- EVENT DETAILS SECTION -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 24px; border-radius: 10px; overflow: hidden; border: 1px solid #E2E8F0; background-color: #FAFAFA;">
+                <tr>
+                  <td style="background-color: #6D0B0B; padding: 10px 16px;">
+                    <span style="color: #F5C842; font-size: 12px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;">
+                      📅 EVENT DETAILS
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 16px 20px;">
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="35%" style="padding: 6px 0; font-size: 13px; color: #718096; font-weight: 600;">Date:</td>
+                        <td width="65%" style="padding: 6px 0; font-size: 14px; color: #1A202C; font-weight: 700;">${dateStr}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #718096; font-weight: 600;">Day:</td>
+                        <td style="padding: 6px 0; font-size: 14px; color: #1A202C; font-weight: 700;">${dayStr}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #718096; font-weight: 600;">Time:</td>
+                        <td style="padding: 6px 0; font-size: 14px; color: #1A202C; font-weight: 700;">${timeStr}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #718096; font-weight: 600; vertical-align: top;">Venue:</td>
+                        <td style="padding: 6px 0; font-size: 14px; color: #1A202C; font-weight: 600; line-height: 1.4;">${venueStr}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #718096; font-weight: 600;">Special Attraction:</td>
+                        <td style="padding: 6px 0; font-size: 14px; color: #B22222; font-weight: 800;">${attractionStr}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
 
-      <p style="margin-top:24px; color:#666; font-size:14px; line-height:1.6;">
-        For any queries, contact us at:<br>
-        📞 <strong>8618156721</strong> &nbsp;|&nbsp; <strong>9482629007</strong>
-      </p>
-    </div>
-    <div class="gold-bar"></div>
-    <div class="footer">
-      <p>
-        <strong style="color:#D4A017;">SSV GROUP</strong><br>
-        Tradition • Music • Dance • Togetherness
-      </p>
-      <p class="sponsor-note">
-        This email was sent to ${data.customerEmail} for booking ${data.bookingRef}.
-        Please do not reply to this email.
-      </p>
-    </div>
-  </div>
+              <!-- BOOKING DETAILS SECTION -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 24px; border-radius: 10px; overflow: hidden; border: 1px solid #D4A017; background-color: #FFFDF9;">
+                <tr>
+                  <td style="background: linear-gradient(90deg, #D4A017, #B8860B); padding: 10px 16px;">
+                    <span style="color: #1a0505; font-size: 12px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;">
+                      🎟️ BOOKING DETAILS
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 16px 20px;">
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="35%" style="padding: 6px 0; font-size: 13px; color: #718096; font-weight: 600;">Booking ID:</td>
+                        <td width="65%" style="padding: 6px 0; font-size: 15px; color: #6D0B0B; font-weight: 800; font-family: monospace; letter-spacing: 1px;">${data.bookingRef}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #718096; font-weight: 600;">Ticket Type:</td>
+                        <td style="padding: 6px 0; font-size: 14px; color: #1A202C; font-weight: 700;">${data.ticketType}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #718096; font-weight: 600;">Quantity:</td>
+                        <td style="padding: 6px 0; font-size: 14px; color: #1A202C; font-weight: 700;">${data.quantity}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #718096; font-weight: 600;">Amount Paid:</td>
+                        <td style="padding: 6px 0; font-size: 16px; color: #27ae60; font-weight: 800;">${amountStr}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 6px 0; font-size: 13px; color: #718096; font-weight: 600;">Payment ID:</td>
+                        <td style="padding: 6px 0; font-size: 13px; color: #4A5568; font-weight: 600; font-family: monospace;">${paymentIdStr}</td>
+                      </tr>
+                      ${
+                        data.shoppingBenefitOptIn !== false && data.couponCode
+                          ? `
+                      <tr>
+                        <td style="padding: 8px 0 0 0; font-size: 13px; color: #047857; font-weight: 600;" colspan="2">
+                          <div style="background-color: #ECFDF5; border: 1px dashed #10B981; border-radius: 6px; padding: 10px; margin-top: 8px;">
+                            <strong style="color: #065F46;">🎁 Foreign Fits ₹200 Shopping Benefit:</strong><br>
+                            Use Coupon Code: <strong style="font-family: monospace; color: #047857; font-size: 14px;">${data.couponCode}</strong>
+                          </div>
+                        </td>
+                      </tr>
+                      `
+                          : ""
+                      }
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Notice on PDF Attachment and QR -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 24px; background-color: #F7FAFC; border-left: 4px solid #6D0B0B; border-radius: 4px;">
+                <tr>
+                  <td style="padding: 14px 16px;">
+                    <p style="margin: 0 0 8px 0; font-size: 14px; font-weight: 700; color: #1A202C;">
+                      📎 The PDF ticket is attached to this email.
+                    </p>
+                    <p style="margin: 0; font-size: 13px; color: #4A5568; line-height: 1.5;">
+                      Please keep the ticket/QR code safely and show it at the event entry when requested. You can also view or download your ticket anytime via the link below:
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Action Button -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 28px;">
+                <tr>
+                  <td align="center">
+                    <a href="${data.ticketUrl}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #6D0B0B 0%, #8B0000 100%); color: #F5C842; font-size: 15px; font-weight: 800; text-decoration: none; padding: 14px 28px; border-radius: 8px; border: 1px solid #D4A017; letter-spacing: 0.5px; box-shadow: 0 4px 12px rgba(109,11,11,0.25);">
+                      🎟️ VIEW YOUR DIGITAL TICKET
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size: 14px; color: #4A5568; line-height: 1.6; margin: 0 0 8px 0;">
+                Thank you for choosing <strong>SSV GROUP</strong>.
+              </p>
+              <p style="font-size: 15px; font-weight: 700; color: #6D0B0B; margin: 0 0 24px 0;">
+                See you at Dandiya Divas 2026! 🎉
+              </p>
+
+              <!-- Helpline Contact -->
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="border-top: 1px solid #E2E8F0; padding-top: 16px;">
+                <tr>
+                  <td style="font-size: 12px; color: #718096; line-height: 1.5;">
+                    Need assistance? Contact the organizing team:<br>
+                    📞 <strong>8618156721</strong> &nbsp;|&nbsp; <strong>9482629007</strong>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #120202; color: #A0AEC0; padding: 24px; text-align: center; font-size: 12px; line-height: 1.6;">
+              <p style="margin: 0 0 6px 0; color: #F5C842; font-weight: 700; letter-spacing: 1px;">
+                SSV GROUP • DANDIYA DIVAS 2026
+              </p>
+              <p style="margin: 0 0 6px 0; color: #CBD5E0;">
+                RS Open Ground, Beside Beldale Petrol Pump, Gumpa, Bidar
+              </p>
+              <p style="margin: 0; color: #718096; font-size: 11px;">
+                This ticket confirmation was sent to ${data.customerEmail} for Booking ID ${data.bookingRef}.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
   `.trim();
+}
+
+function buildConfirmationText(data: BookingConfirmationData): string {
+  const dateStr = data.eventDate || "14 October 2026";
+  const dayStr = data.eventDay || "Wednesday";
+  const timeStr = data.eventTime || "5:00 PM – 10:00 PM";
+  const venueStr =
+    data.venue || "RS Open Ground, Beside Beldale Petrol Pump, Gumpa, Bidar";
+  const attractionStr = data.specialAttraction || "SP POWER";
+  const paymentIdStr = data.paymentId || "Confirmed via Razorpay";
+  const amountStr = formatCurrency(data.totalInPaise);
+
+  let text = `
+SSV GROUP
+DANDIYA DIVAS 2026
+
+🎉 BOOKING CONFIRMED
+
+Hello ${data.customerName},
+
+Your ticket booking for SSV GROUP Dandiya Divas 2026 has been successfully confirmed.
+
+EVENT DETAILS
+
+Date:
+${dateStr}
+
+Day:
+${dayStr}
+
+Time:
+${timeStr}
+
+Venue:
+${venueStr}
+
+Special Attraction:
+${attractionStr}
+
+BOOKING DETAILS
+
+Booking ID:
+${data.bookingRef}
+
+Ticket Type:
+${data.ticketType}
+
+Quantity:
+${data.quantity}
+
+Amount Paid:
+${amountStr}
+
+Payment ID:
+${paymentIdStr}
+`;
+
+  if (data.shoppingBenefitOptIn !== false && data.couponCode) {
+    text += `
+Foreign Fits Shopping Benefit:
+Coupon Code: ${data.couponCode}
+(Redeem ₹200 at Foreign Fits imported fashion store)
+`;
+  }
+
+  text += `
+The PDF ticket is attached to this email.
+
+Please keep the ticket/QR code safely and show it at the event entry when requested.
+
+View your digital ticket online:
+${data.ticketUrl}
+
+Thank you for choosing SSV GROUP.
+
+See you at Dandiya Divas 2026! 🎉
+
+Support: 8618156721 | 9482629007
+`;
+
+  return text.trim();
 }
 
 export async function sendBookingConfirmation(
   data: BookingConfirmationData,
   pdfBuffer?: Buffer
 ): Promise<{ success: boolean; error?: string }> {
+  const config = getEmailConfig();
+
+  // If SMTP is not configured in development or test, log safely and succeed
   const isMock =
     process.env.EMAIL_MODE === "mock" ||
-    (!process.env.SMTP_HOST && process.env.NODE_ENV !== "production");
+    (!config && process.env.NODE_ENV !== "production");
 
   if (isMock) {
     if (process.env.NODE_ENV !== "production") {
       console.log(
-        `[EMAIL:DEV-MOCK] Confirmation sent to ${data.customerEmail} for ${data.bookingRef}`
+        `[EMAIL:DEV-MOCK] Confirmation sent to ${data.customerEmail} for booking ${data.bookingRef} (PDF attached: ${Boolean(pdfBuffer)})`
       );
     }
     return { success: true };
   }
-
-  const config = getEmailConfig();
 
   if (!config) {
     console.warn(
@@ -190,11 +399,12 @@ export async function sendBookingConfirmation(
   try {
     const transporter = createTransporter(config);
     const html = buildConfirmationHTML(data);
+    const text = buildConfirmationText(data);
 
     const attachments = pdfBuffer
       ? [
           {
-            filename: `SSV-Ticket-${data.bookingRef}.pdf`,
+            filename: `SSV-Dandiya-Divas-2026-Ticket-${data.bookingRef}.pdf`,
             content: pdfBuffer,
             contentType: "application/pdf",
           },
@@ -204,13 +414,14 @@ export async function sendBookingConfirmation(
     await transporter.sendMail({
       from: config.from,
       to: data.customerEmail,
-      subject: `✅ Booking Confirmed — SSV Dandiya Divas 2026 [${data.bookingRef}]`,
+      subject: "🎉 Your SSV GROUP Dandiya Divas 2026 Ticket is Confirmed!",
+      text,
       html,
       attachments,
     });
 
     console.log(
-      `[EMAIL] Confirmation sent to ${data.customerEmail} for ${data.bookingRef}`
+      `[EMAIL] Confirmation email successfully sent to ${data.customerEmail} for booking ${data.bookingRef}`
     );
     return { success: true };
   } catch (error) {
