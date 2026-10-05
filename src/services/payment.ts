@@ -607,7 +607,7 @@ export async function failBooking(bookingId: string, reason?: string): Promise<v
 
 export interface VerifyTicketResult {
   valid: boolean;
-  status: "SUCCESS" | "ALREADY_USED" | "INVALID" | "CANCELLED" | "NOT_FOUND";
+  status: "VERIFIED" | "ALREADY_VERIFIED" | "INVALID" | "CANCELLED" | "NOT_FOUND" | "SUCCESS" | "ALREADY_USED";
   message: string;
   ticketInfo?: {
     bookingRef: string;
@@ -620,18 +620,71 @@ export interface VerifyTicketResult {
 
 /**
  * Verifies a ticket by QR token and atomically checks in the attendee.
- * Prevents multiple entries on the same ticket.
+ * Guarantees one-time verification with atomic concurrency guard:
+ * - First valid scan marks ticket as VERIFIED and records scan history.
+ * - Second or any subsequent scan returns ALREADY_VERIFIED without updating timestamp or duplicating records.
+ * - Under simultaneous concurrent scans, only one succeeds as VERIFIED.
  */
 export async function verifyAndCheckInTicket(
   token: string,
   adminId?: string
 ): Promise<VerifyTicketResult> {
-  // Strip verification URL if full URL is scanned
-  const cleanToken = token.includes("/verify/") ? token.split("/verify/").pop() || token : token;
+  // Strip verification URL if full URL is scanned or entered
+  const cleanInput = token.includes("/verify/")
+    ? token.split("/verify/").pop()?.split("?")[0].trim() || token.trim()
+    : token.trim();
+
+  if (!cleanInput) {
+    return {
+      valid: false,
+      status: "INVALID",
+      message: "Please enter a valid Ticket Token or Booking Reference.",
+    };
+  }
+
+  const normalizedInput = cleanInput.toUpperCase();
 
   return await prisma.$transaction(async (tx: Prisma.TransactionClient): Promise<VerifyTicketResult> => {
-    const ticket = await tx.ticket.findUnique({
-      where: { token: cleanToken },
+    let validAdminId: string | null = null;
+    if (adminId) {
+      try {
+        const adminUser = await tx.adminUser.findUnique({
+          where: { id: adminId },
+          select: { id: true },
+        });
+        if (adminUser) {
+          validAdminId = adminUser.id;
+        }
+      } catch {
+        validAdminId = null;
+      }
+    }
+
+    // 1. REJECT FOREIGN FITS COUPON CODES
+    // Foreign Fits coupon codes are solely for the ₹200 shopping benefit and cannot be used for entry
+    const couponMatch = await tx.coupon.findFirst({
+      where: {
+        code: { equals: cleanInput, mode: "insensitive" },
+      },
+    });
+
+    if (couponMatch) {
+      return {
+        valid: false,
+        status: "INVALID",
+        message: "Foreign Fits coupon codes cannot be used for event entry. They are only for the ₹200 shopping benefit.",
+      };
+    }
+
+    // 2. CHECK IF INPUT IS A SECURE TICKET TOKEN
+    const ticket = await tx.ticket.findFirst({
+      where: {
+        OR: [
+          { token: cleanInput },
+          { token: cleanInput.toLowerCase() },
+          { token: normalizedInput },
+        ],
+      },
       include: {
         booking: {
           include: {
@@ -641,109 +694,239 @@ export async function verifyAndCheckInTicket(
       },
     });
 
-    if (!ticket) {
-      if (adminId) {
-        await tx.auditLog.create({
-          data: {
-            adminId,
-            action: "SCAN_INVALID",
-            details: { rawToken: cleanToken },
-          },
-        });
+    if (ticket) {
+      const booking = ticket.booking;
+      const ticketItem = booking.bookingItems?.[0];
+      const baseInfo = {
+        bookingRef: booking.bookingRef,
+        customerName: booking.customerName,
+        ticketType: ticketItem?.ticketType?.name || "Pass",
+        quantity: ticketItem?.quantity || 1,
+      };
+
+      if (booking.status !== BookingStatus.CONFIRMED || booking.paymentStatus !== PaymentStatus.PAID) {
+        return {
+          valid: false,
+          status: "CANCELLED",
+          message: `Booking is ${booking.status}. Entry permitted only for PAID bookings.`,
+          ticketInfo: baseInfo,
+        };
       }
+
+      if (!ticket.isValid) {
+        return {
+          valid: false,
+          status: "CANCELLED",
+          message: "This ticket has been marked invalid or cancelled.",
+          ticketInfo: baseInfo,
+        };
+      }
+
+      if (ticket.checkedIn) {
+        return {
+          valid: false,
+          status: "ALREADY_VERIFIED",
+          message: "This ticket has already been verified.",
+          ticketInfo: {
+            ...baseInfo,
+            checkedInAt: ticket.checkedInAt || undefined,
+          },
+        };
+      }
+
+      const now = new Date();
+      const updateResult = await tx.ticket.updateMany({
+        where: {
+          id: ticket.id,
+          checkedIn: false,
+          isValid: true,
+        },
+        data: {
+          checkedIn: true,
+          checkedInAt: now,
+        },
+      });
+
+      if (updateResult.count === 0) {
+        const currentTicket = await tx.ticket.findUnique({
+          where: { id: ticket.id },
+          select: { checkedInAt: true },
+        });
+        return {
+          valid: false,
+          status: "ALREADY_VERIFIED",
+          message: "This ticket has already been verified.",
+          ticketInfo: {
+            ...baseInfo,
+            checkedInAt: currentTicket?.checkedInAt || ticket.checkedInAt || now,
+          },
+        };
+      }
+
+      await tx.ticketScan.create({
+        data: {
+          ticketId: ticket.id,
+          adminId: validAdminId,
+          result: "VERIFIED",
+          scannedAt: now,
+          deviceInfo: "QR Scan",
+        },
+      });
+
       return {
-        valid: false,
-        status: "NOT_FOUND",
-        message: "Invalid ticket QR code. Ticket not found.",
+        valid: true,
+        status: "VERIFIED",
+        message: "Ticket verified! Entry permitted.",
+        ticketInfo: {
+          ...baseInfo,
+          checkedInAt: now,
+        },
       };
     }
 
-    const booking = ticket.booking;
-    const ticketItem = booking.bookingItems[0];
+    // 3. CHECK IF INPUT IS A BOOKING REFERENCE OR BOOKING ID
+    const bookingMatch = await tx.booking.findFirst({
+      where: {
+        OR: [
+          { bookingRef: normalizedInput },
+          { bookingRef: cleanInput },
+          { bookingRef: { equals: cleanInput, mode: "insensitive" } },
+          { id: cleanInput.toLowerCase() },
+          { id: cleanInput },
+        ],
+      },
+      include: {
+        tickets: { orderBy: { createdAt: "asc" } },
+        bookingItems: { include: { ticketType: true } },
+      },
+    });
+
+    if (!bookingMatch) {
+      if (validAdminId) {
+        await tx.auditLog.create({
+          data: {
+            adminId: validAdminId,
+            action: "SCAN_INVALID",
+            details: { rawToken: cleanInput },
+          },
+        }).catch(() => null);
+      }
+      return {
+        valid: false,
+        status: "INVALID",
+        message: "Invalid Booking Reference or Ticket Token. No matching record found.",
+      };
+    }
+
+    const ticketItem = bookingMatch.bookingItems?.[0];
     const baseInfo = {
-      bookingRef: booking.bookingRef,
-      customerName: booking.customerName,
+      bookingRef: bookingMatch.bookingRef,
+      customerName: bookingMatch.customerName,
       ticketType: ticketItem?.ticketType?.name || "Pass",
       quantity: ticketItem?.quantity || 1,
     };
 
-    if (booking.status !== BookingStatus.CONFIRMED || booking.paymentStatus !== PaymentStatus.PAID) {
-      await tx.ticketScan.create({
-        data: {
-          ticketId: ticket.id,
-          adminId: adminId || null,
-          result: "CANCELLED",
-          deviceInfo: `Booking Status: ${booking.status}`,
-        },
-      });
+    // 2. Confirm the booking is PAID
+    if (bookingMatch.status !== BookingStatus.CONFIRMED || bookingMatch.paymentStatus !== PaymentStatus.PAID) {
       return {
         valid: false,
         status: "CANCELLED",
-        message: `Booking is ${booking.status}. Entry not permitted.`,
+        message: `Booking is ${bookingMatch.status}. Entry permitted only for PAID bookings.`,
         ticketInfo: baseInfo,
       };
     }
 
-    if (ticket.checkedIn) {
-      await tx.ticketScan.create({
+    // 3. Find associated valid ticket
+    let tickets = bookingMatch.tickets;
+    if (tickets.length === 0) {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const generatedToken = generateTicketToken();
+      const newTicket = await tx.ticket.create({
         data: {
-          ticketId: ticket.id,
-          adminId: adminId || null,
-          result: "ALREADY_USED",
+          bookingId: bookingMatch.id,
+          token: generatedToken,
+          qrData: `${baseUrl}/verify/${generatedToken}`,
+          isValid: true,
+          checkedIn: false,
         },
       });
+      tickets = [newTicket];
+    }
+
+    const primaryTicket = tickets[0];
+
+    // Second or later attempt: if already checked in, return ALREADY_VERIFIED
+    const alreadyCheckedIn = tickets.find((t) => t.checkedIn);
+    if (alreadyCheckedIn) {
       return {
         valid: false,
-        status: "ALREADY_USED",
-        message: "This ticket has already been checked in.",
+        status: "ALREADY_VERIFIED",
+        message: "This booking has already been verified and checked in.",
         ticketInfo: {
           ...baseInfo,
-          checkedInAt: ticket.checkedInAt || undefined,
+          checkedInAt: alreadyCheckedIn.checkedInAt || undefined,
         },
       };
     }
 
-    if (!ticket.isValid) {
-      await tx.ticketScan.create({
-        data: {
-          ticketId: ticket.id,
-          adminId: adminId || null,
-          result: "CANCELLED",
-        },
-      });
+    const hasValidTicket = tickets.some((t) => t.isValid);
+    if (!hasValidTicket) {
       return {
         valid: false,
         status: "CANCELLED",
-        message: "This ticket has been marked invalid.",
+        message: "This ticket has been marked invalid or cancelled.",
         ticketInfo: baseInfo,
       };
     }
 
-    // Atomic Check-In
-    const checkedInAt = new Date();
-    await tx.ticket.update({
-      where: { id: ticket.id },
+    // First valid check-in: atomically check in all tickets for this booking
+    const now = new Date();
+    const updateResult = await tx.ticket.updateMany({
+      where: {
+        bookingId: bookingMatch.id,
+        checkedIn: false,
+        isValid: true,
+      },
       data: {
         checkedIn: true,
-        checkedInAt,
+        checkedInAt: now,
       },
     });
 
+    if (updateResult.count === 0) {
+      const currentTicket = await tx.ticket.findFirst({
+        where: { bookingId: bookingMatch.id, checkedIn: true },
+        select: { checkedInAt: true },
+      });
+      return {
+        valid: false,
+        status: "ALREADY_VERIFIED",
+        message: "This booking has already been verified and checked in.",
+        ticketInfo: {
+          ...baseInfo,
+          checkedInAt: currentTicket?.checkedInAt || now,
+        },
+      };
+    }
+
+    // Record verified scan in TicketScan
     await tx.ticketScan.create({
       data: {
-        ticketId: ticket.id,
-        adminId: adminId || null,
-        result: "SUCCESS",
+        ticketId: primaryTicket.id,
+        adminId: validAdminId,
+        result: "VERIFIED",
+        scannedAt: now,
+        deviceInfo: `Manual Ref: ${bookingMatch.bookingRef}`,
       },
     });
 
     return {
       valid: true,
-      status: "SUCCESS",
-      message: "Valid ticket! Entry allowed.",
+      status: "VERIFIED",
+      message: "Ticket verified! Entry permitted.",
       ticketInfo: {
         ...baseInfo,
-        checkedInAt,
+        checkedInAt: now,
       },
     };
   });

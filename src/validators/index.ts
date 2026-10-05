@@ -69,9 +69,16 @@ export const AdminLoginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-export const TicketScanSchema = z.object({
-  token: z.string().min(10, "Invalid QR token"),
-});
+export const TicketScanSchema = z
+  .object({
+    token: z.string().min(3).optional(),
+    reference: z.string().min(3).optional(),
+    bookingRef: z.string().min(3).optional(),
+    code: z.string().min(3).optional(),
+  })
+  .refine((data) => Boolean(data.token || data.reference || data.bookingRef || data.code), {
+    message: "Invalid token or booking reference",
+  });
 
 export const ManualCheckinSchema = z.object({
   bookingRef: z

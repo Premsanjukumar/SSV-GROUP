@@ -46,9 +46,11 @@ export async function POST(req: NextRequest) {
     const confirmation = await confirmDemoPayment(bookingId);
 
     // Asynchronously trigger post-payment fulfillment
-    afterPayment(bookingId).catch((err) => {
-      console.error("[postConfirm Async Demo Failure]", err?.message || err);
-    });
+    try {
+      await afterPayment(bookingId);
+    } catch (err) {
+      console.error("[postConfirm Async Demo Failure]", err instanceof Error ? err.message : err);
+    }
 
     return NextResponse.json({
       success: true,

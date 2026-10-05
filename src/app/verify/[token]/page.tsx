@@ -7,7 +7,15 @@ export const metadata = { title: "Ticket verification", robots: { index: false }
 // Public and read-only: shows status only and never consumes the ticket. Check-in happens in /admin/scanner.
 export default async function VerifyPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const t = token.length > 200 ? null : await prisma.ticket.findFirst({ where: { token }, include: { booking: true } });
+  const t = token.length > 200 ? null : await prisma.ticket.findFirst({
+    where: {
+      OR: [
+        { token },
+        { booking: { bookingRef: { equals: token, mode: "insensitive" } } },
+      ],
+    },
+    include: { booking: true },
+  });
   let title = "INVALID TICKET", note = "This QR code is not recognised.", bg = "#B3162B";
   if (t) {
     if (!t.isValid || (t.booking.status !== "CONFIRMED" && t.booking.paymentStatus !== "PAID")) {

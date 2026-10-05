@@ -170,4 +170,49 @@ describe("Automatic Ticket Email Delivery System", () => {
     expect(pdfBuffer.subarray(0, 4).toString()).toBe("%PDF");
     expect(pdfBuffer.length).toBeGreaterThan(1000);
   });
+
+  it("CASE 1: Successfully handles Gmail app password containing spaces and sends to booking email", async () => {
+    process.env.SMTP_HOST = "smtp.gmail.com";
+    process.env.SMTP_USER = "Ssvphotography777@gmail.com";
+    process.env.SMTP_PASS = "lwko znpg yrgu elza"; // standard 4x4 app password with spaces
+
+    const customerEmail = "customer.ticket@gmail.com";
+    const result = await sendBookingConfirmation({
+      customerName: "Sanjay Kumar",
+      customerEmail,
+      bookingRef: "SSV-DD26-APPWD1",
+      ticketType: "Couple Pass",
+      quantity: 1,
+      totalInPaise: 49900,
+      ticketUrl: "https://ssvgroup.in/ticket/SSV-DD26-APPWD1",
+    });
+
+    expect(result.success).toBe(true);
+    expect(mockSendMail).toHaveBeenCalled();
+    const callArgs = mockSendMail.mock.calls[mockSendMail.mock.calls.length - 1][0];
+    expect(callArgs.to).toBe(customerEmail);
+  });
+
+  it("CASE 2: Email failure returns failure status gracefully without throwing or crashing", async () => {
+    mockSendMail.mockRejectedValueOnce(new Error("SMTP Connection Timeout"));
+
+    process.env.SMTP_HOST = "smtp.gmail.com";
+    process.env.SMTP_USER = "tickets@ssvgroup.in";
+    process.env.SMTP_PASS = "sample_password";
+
+    const result = await sendBookingConfirmation({
+      customerName: "Failure Test User",
+      customerEmail: "fail.user@example.com",
+      bookingRef: "SSV-DD26-FAIL01",
+      ticketType: "Single Pass",
+      quantity: 1,
+      totalInPaise: 29900,
+      ticketUrl: "https://ssvgroup.in/ticket/SSV-DD26-FAIL01",
+    });
+
+    // Email returns failure with error message, allowing caller to mark emailDeliveryStatus as FAILED
+    // while keeping payment & booking confirmed
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("SMTP Connection Timeout");
+  });
 });

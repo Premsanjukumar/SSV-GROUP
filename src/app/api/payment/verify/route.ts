@@ -108,10 +108,12 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. DECOUPLED POST-PAYMENT PROCESSING (EMAIL, SMS, WHATSAPP)
-    // Runs in background: failures do not block or fail the customer confirmation
-    afterPayment(booking.id).catch((err) => {
-      console.error("[postConfirm Async Failure]", err?.message || err);
-    });
+    // Runs in server verification: failures do not block or fail the customer confirmation
+    try {
+      await afterPayment(booking.id);
+    } catch (err) {
+      console.error("[postConfirm Async Failure]", err instanceof Error ? err.message : err);
+    }
 
     return NextResponse.json({
       success: true,

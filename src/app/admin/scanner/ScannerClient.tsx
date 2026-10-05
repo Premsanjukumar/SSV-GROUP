@@ -16,7 +16,7 @@ import {
 
 interface ScanResponse {
   valid: boolean;
-  status: "SUCCESS" | "ALREADY_USED" | "INVALID" | "CANCELLED" | "NOT_FOUND";
+  status: "VERIFIED" | "ALREADY_VERIFIED" | "SUCCESS" | "ALREADY_USED" | "INVALID" | "CANCELLED" | "NOT_FOUND";
   message: string;
   ticketInfo?: {
     bookingRef: string;
@@ -47,6 +47,9 @@ export default function ScannerClient() {
 
   const scannerRef = useRef<unknown | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const lastScannedCodeRef = useRef<string | null>(null);
+  const lastScanTimeRef = useRef<number>(0);
+  const isProcessingRef = useRef<boolean>(false);
 
   // Sound effects generator using Web Audio API
   const playBeep = (type: "success" | "error" | "warning") => {
@@ -94,14 +97,29 @@ export default function ScannerClient() {
     }
   };
 
-  const handleScanToken = async (rawCode: string) => {
-    if (!rawCode || loading) return;
+  const handleScanToken = async (rawCode: string, isManual = false) => {
+    if (!rawCode) return;
 
     // Extract token if code is full URL
     let token = rawCode.trim();
     if (token.includes("/verify/")) {
       token = token.split("/verify/")[1].split("?")[0].trim();
     }
+
+    if (!token) return;
+
+    // Prevent duplicate camera triggers while processing or during cooldown for the same code
+    const now = Date.now();
+    if (!isManual) {
+      if (isProcessingRef.current) return;
+      if (lastScannedCodeRef.current === token && now - lastScanTimeRef.current < 2500) {
+        return; // Ignore rapid duplicate detections of the same QR code
+      }
+    }
+
+    isProcessingRef.current = true;
+    lastScannedCodeRef.current = token;
+    lastScanTimeRef.current = now;
 
     setLoading(true);
     setCameraError(null);
@@ -116,9 +134,9 @@ export default function ScannerClient() {
       const data: ScanResponse = await res.json();
       setLastResult(data);
 
-      if (data.valid) {
+      if (data.status === "VERIFIED" || data.status === "SUCCESS") {
         playBeep("success");
-      } else if (data.status === "ALREADY_USED") {
+      } else if (data.status === "ALREADY_VERIFIED" || data.status === "ALREADY_USED") {
         playBeep("warning");
       } else {
         playBeep("error");
@@ -146,6 +164,7 @@ export default function ScannerClient() {
       playBeep("error");
     } finally {
       setLoading(false);
+      isProcessingRef.current = false;
     }
   };
 
@@ -281,12 +300,12 @@ export default function ScannerClient() {
               Manual Search / Code Verification
             </h2>
             <p className="text-xs text-zinc-400 mb-4">
-              Paste or type Ticket Token or Booking Reference (e.g. SSV-DD26-XXXXXX)
+              Paste or type Ticket Token or Booking Reference (e.g. SSV-DANDIYA-KJF3H8)
             </p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                handleScanToken(manualCode);
+                handleScanToken(manualCode, true);
               }}
               className="flex gap-2"
             >
@@ -294,7 +313,7 @@ export default function ScannerClient() {
                 type="text"
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value)}
-                placeholder="Enter Booking Ref or Ticket Token..."
+                placeholder="Enter Booking Ref (e.g. SSV-DANDIYA-KJF3H8) or Ticket Token..."
                 className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-amber-500 transition placeholder:text-zinc-600"
               />
               <button
@@ -320,8 +339,8 @@ export default function ScannerClient() {
                 <p className="text-sm font-medium">Awaiting Scan</p>
                 <p className="text-xs text-zinc-600 mt-1">Scan a QR code or submit a code to verify entry.</p>
               </div>
-            ) : lastResult.valid ? (
-              /* SUCCESS BANNER */
+            ) : lastResult.status === "VERIFIED" || (lastResult.valid && lastResult.status === "SUCCESS") ? (
+              /* VERIFIED BANNER */
               <div className="bg-emerald-950/50 border-2 border-emerald-500/60 rounded-2xl p-6 text-emerald-300 space-y-4 animate-in fade-in zoom-in-95 duration-200">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
@@ -331,7 +350,7 @@ export default function ScannerClient() {
                     <span className="text-xs uppercase tracking-widest font-bold text-emerald-400 bg-emerald-500/20 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
                       ENTRY ALLOWED
                     </span>
-                    <h3 className="text-xl font-extrabold text-white mt-1">VALID TICKET</h3>
+                    <h3 className="text-2xl font-extrabold text-white mt-1 tracking-wide">VERIFIED</h3>
                   </div>
                 </div>
 
@@ -356,11 +375,11 @@ export default function ScannerClient() {
                   </div>
                 )}
                 <p className="text-xs text-emerald-400/80 text-center font-medium">
-                  ✓ Ticket marked as CHECKED IN. Allow visitor entry.
+                  ✓ Ticket successfully verified and marked checked in. Allow visitor entry.
                 </p>
               </div>
-            ) : lastResult.status === "ALREADY_USED" ? (
-              /* ALREADY USED BANNER */
+            ) : lastResult.status === "ALREADY_VERIFIED" || lastResult.status === "ALREADY_USED" ? (
+              /* ALREADY VERIFIED BANNER */
               <div className="bg-amber-950/50 border-2 border-amber-500/60 rounded-2xl p-6 text-amber-300 space-y-4 animate-in fade-in zoom-in-95 duration-200">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
@@ -368,20 +387,34 @@ export default function ScannerClient() {
                   </div>
                   <div>
                     <span className="text-xs uppercase tracking-widest font-bold text-amber-400 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                      WARNING — ALREADY USED
+                      WARNING — DO NOT ADMIT AGAIN
                     </span>
-                    <h3 className="text-xl font-extrabold text-white mt-1">DUPLICATE ENTRY</h3>
+                    <h3 className="text-2xl font-extrabold text-white mt-1 tracking-wide">ALREADY VERIFIED</h3>
                   </div>
                 </div>
-                <p className="text-sm text-zinc-300">{lastResult.message}</p>
+                <p className="text-sm text-zinc-300 font-medium">
+                  This ticket has already been verified and used for entry.
+                </p>
                 {lastResult.ticketInfo && (
                   <div className="bg-zinc-950/60 rounded-xl p-4 space-y-2 border border-amber-500/20 text-sm">
                     <div className="flex justify-between border-b border-zinc-800/80 pb-2">
                       <span className="text-zinc-400">Guest Name:</span>
                       <span className="font-bold text-white">{lastResult.ticketInfo.customerName}</span>
                     </div>
+                    <div className="flex justify-between border-b border-zinc-800/80 pb-2">
+                      <span className="text-zinc-400">Pass Category:</span>
+                      <span className="font-semibold text-amber-400">{lastResult.ticketInfo.ticketType}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-zinc-800/80 pb-2">
+                      <span className="text-zinc-400">Quantity:</span>
+                      <span className="font-semibold text-white">{lastResult.ticketInfo.quantity} Person(s)</span>
+                    </div>
+                    <div className="flex justify-between border-b border-zinc-800/80 pb-2">
+                      <span className="text-zinc-400">Booking Ref:</span>
+                      <span className="font-mono text-zinc-300">{lastResult.ticketInfo.bookingRef}</span>
+                    </div>
                     <div className="flex justify-between">
-                      <span className="text-zinc-400">Checked In At:</span>
+                      <span className="text-zinc-400">Original Scan Time:</span>
                       <span className="font-semibold text-amber-400">
                         {lastResult.ticketInfo.checkedInAt
                           ? new Date(lastResult.ticketInfo.checkedInAt).toLocaleString()
@@ -402,7 +435,9 @@ export default function ScannerClient() {
                     <span className="text-xs uppercase tracking-widest font-bold text-red-400 bg-red-500/20 px-2.5 py-0.5 rounded-full border border-red-500/30">
                       ENTRY DENIED
                     </span>
-                    <h3 className="text-xl font-extrabold text-white mt-1">INVALID TICKET</h3>
+                    <h3 className="text-2xl font-extrabold text-white mt-1 tracking-wide">
+                      {lastResult.status === "CANCELLED" ? "CANCELLED" : "INVALID"}
+                    </h3>
                   </div>
                 </div>
                 <p className="text-sm text-zinc-300">{lastResult.message}</p>
@@ -434,14 +469,14 @@ export default function ScannerClient() {
                     <div className="text-right space-y-0.5">
                       <span
                         className={`inline-block font-bold px-2 py-0.5 rounded text-[10px] ${
-                          item.status === "SUCCESS"
+                          item.status === "VERIFIED" || item.status === "SUCCESS"
                             ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                            : item.status === "ALREADY_USED"
+                            : item.status === "ALREADY_VERIFIED" || item.status === "ALREADY_USED"
                             ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
                             : "bg-red-500/20 text-red-400 border border-red-500/30"
                         }`}
                       >
-                        {item.status}
+                        {item.status === "ALREADY_VERIFIED" ? "ALREADY VERIFIED" : item.status}
                       </span>
                       <p className="text-zinc-600 text-[10px]">{item.timestamp}</p>
                     </div>

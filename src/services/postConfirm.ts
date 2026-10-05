@@ -117,8 +117,12 @@ export async function afterPayment(
         });
 
         // If another process already claimed or sent the email, skip duplicate send
-        if (claim.count === 0 && booking.emailDeliveryStatus === DeliveryStatus.SENT) {
-          result.emailSent = true;
+        if (claim.count === 0) {
+          const fresh = await prisma.booking.findUnique({
+            where: { id: bookingId },
+            select: { emailDeliveryStatus: true },
+          });
+          result.emailSent = fresh?.emailDeliveryStatus === DeliveryStatus.SENT;
           return result;
         }
       }

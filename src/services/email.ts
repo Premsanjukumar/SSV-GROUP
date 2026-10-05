@@ -10,21 +10,16 @@ interface EmailConfig {
   from: string;
 }
 
-interface EmailConfig {
-  host: string;
-  port: number;
-  secure: boolean;
-  user: string;
-  pass: string;
-  from: string;
-}
-
 function getEmailConfig(): EmailConfig | null {
   const host = process.env.SMTP_HOST || (process.env.SMTP_USER ? "smtp.gmail.com" : "");
   const port = parseInt(process.env.SMTP_PORT || "587");
   const secure = process.env.SMTP_SECURE === "true" || port === 465;
   const user = process.env.SMTP_USER || "";
-  const pass = process.env.SMTP_PASSWORD || process.env.SMTP_PASS || "";
+  const rawPass = process.env.SMTP_PASSWORD || process.env.SMTP_PASS || "";
+  // Google App Passwords are 16 characters often formatted with spaces (xxxx xxxx xxxx xxxx).
+  // Remove any spaces for reliable Gmail SMTP authentication.
+  const isGmail = host.toLowerCase().includes("gmail") || user.toLowerCase().includes("@gmail.com");
+  const pass = isGmail ? rawPass.replace(/\s+/g, "") : rawPass.trim();
   const from =
     process.env.SMTP_FROM ||
     process.env.EMAIL_FROM ||
@@ -38,6 +33,17 @@ function getEmailConfig(): EmailConfig | null {
 }
 
 function createTransporter(config: EmailConfig) {
+  const isGmail = config.host.toLowerCase().includes("gmail") || config.user.toLowerCase().includes("@gmail.com");
+  if (isGmail) {
+    return nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: config.user,
+        pass: config.pass,
+      },
+    });
+  }
+
   return nodemailer.createTransport({
     host: config.host,
     port: config.port,

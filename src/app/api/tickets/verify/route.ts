@@ -21,13 +21,18 @@ export async function POST(req: NextRequest) {
 
   const result = TicketScanSchema.safeParse(body);
   if (!result.success) {
-    return NextResponse.json({ error: "Invalid token" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid token or booking reference" }, { status: 400 });
   }
 
-  const { token } = result.data;
+  const rawInput =
+    result.data.token ||
+    result.data.reference ||
+    result.data.bookingRef ||
+    result.data.code ||
+    "";
   const ip = getClientIp(req.headers);
 
-  const scanResult = await verifyAndCheckInTicket(token, session.adminId);
+  const scanResult = await verifyAndCheckInTicket(rawInput, session.adminId);
 
   // Log scan to audit
   await prisma.auditLog.create({
@@ -54,8 +59,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Token required" }, { status: 400 });
   }
 
-  const ticket = await prisma.ticket.findUnique({
-    where: { token },
+  const clean = token.trim();
+  const ticket = await prisma.ticket.findFirst({
+    where: {
+      OR: [
+        { token: clean },
+        { booking: { bookingRef: { equals: clean, mode: "insensitive" } } },
+      ],
+    },
     include: {
       booking: {
         include: { bookingItems: { include: { ticketType: true } } },

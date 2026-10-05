@@ -90,9 +90,11 @@ export async function POST(req: NextRequest) {
         );
 
         // Asynchronous post-payment delivery
-        afterPayment(payment.bookingId).catch((err) => {
-          console.error("[postConfirm Async Failure via Webhook]", err?.message || err);
-        });
+        try {
+          await afterPayment(payment.bookingId);
+        } catch (err) {
+          console.error("[postConfirm Async Failure via Webhook]", err instanceof Error ? err.message : err);
+        }
 
         break;
       }
